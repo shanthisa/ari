@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Item } from "../../workers/api/repositories/items-repo";
+import type { Event } from "../../workers/api/repositories/events-repo";
 import type { Membership } from "../../workers/api/repositories/memberships-repo";
 import type { Organization } from "../../workers/api/repositories/organizations-repo";
 import type { User } from "../../workers/api/repositories/users-repo";
@@ -25,35 +25,45 @@ export function mockOrganizationsRepo() {
   };
 }
 
-export function fakeItem(overrides: Partial<Item> = {}): Item {
+export function fakeEvent(overrides: Partial<Event> = {}): Event {
   return {
-    id: "item_1",
+    id: "event_1",
     orgId: "org_test_1",
-    name: "First Item",
-    description: "A sample item",
+    userId: "user_test_1",
+    name: "First Event",
+    date: "2026-06-12",
+    venue: "Moscone West",
+    notes: "A sample event",
+    status: "draft",
     createdAt: 1_700_000_000,
     updatedAt: 1_700_000_000,
     ...overrides,
   };
 }
 
-export function mockItemsRepo() {
+export function mockEventsRepo() {
   return {
     create: vi.fn(),
     getById: vi.fn(),
-    listByOrg: vi.fn(),
-    countByOrg: vi.fn(),
+    listByOwner: vi.fn(),
+    countOpenByOwner: vi.fn(),
+    getActive: vi.fn(),
     update: vi.fn(),
+    setActive: vi.fn(),
+    setStatus: vi.fn(),
     delete: vi.fn(),
   };
 }
 
-export function mockItemsService() {
+export function mockEventsService() {
   return {
     list: vi.fn(),
     get: vi.fn(),
+    getActive: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    activate: vi.fn(),
+    archive: vi.fn(),
     delete: vi.fn(),
   };
 }

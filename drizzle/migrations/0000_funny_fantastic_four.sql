@@ -36,14 +36,19 @@ CREATE TABLE `usage_counters` (
 	PRIMARY KEY(`org_id`, `period`)
 );
 --> statement-breakpoint
-CREATE TABLE `items` (
+CREATE TABLE `events` (
 	`id` text PRIMARY KEY NOT NULL,
 	`org_id` text NOT NULL,
+	`user_id` text NOT NULL,
 	`name` text NOT NULL,
-	`description` text,
+	`date` text,
+	`venue` text,
+	`notes` text,
+	`status` text DEFAULT 'draft' NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`org_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `items_org_id_idx` ON `items` (`org_id`);
+CREATE INDEX `events_org_id_idx` ON `events` (`org_id`);--> statement-breakpoint
+CREATE INDEX `events_owner_status_idx` ON `events` (`org_id`,`user_id`,`status`);

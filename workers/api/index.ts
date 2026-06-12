@@ -1,8 +1,8 @@
 import { clerkMiddleware } from "@clerk/hono";
 import { Hono } from "hono";
 import { domainErrorHandler } from "./controllers/error-handler";
+import { createEventsController } from "./controllers/events-controller";
 import { createIntegrationsController } from "./controllers/integrations-controller";
-import { createItemsController } from "./controllers/items-controller";
 import { createMembersController } from "./controllers/members-controller";
 import { requireOrg } from "./middleware/auth";
 import { injectServices } from "./middleware/services";
@@ -46,7 +46,7 @@ export function createApi() {
       membership: c.var.membership,
     }),
   );
-  authed.route("/items", createItemsController());
+  authed.route("/events", createEventsController());
   authed.route("/members", createMembersController());
 
   app.route("/", authed);

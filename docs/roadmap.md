@@ -21,9 +21,10 @@ the Clerk session — never a client value (AGENTS.md, "Architecture rules").
 
 ## Reference pattern
 
-`items` is a complete vertical slice — copy it for every resource below. The
-exact recipe is **[docs/workshop.md §2](workshop.md)** ("Add a resource by copying
-`items`"). The wiring touch-points each phase repeats:
+`events` (built in Phase 1) is the complete vertical slice — copy it for every
+resource below. It replaced the starter's throwaway `items` example. The recipe
+in **[docs/workshop.md §2](workshop.md)** still applies verbatim; just read
+`events` wherever it says `items`. The wiring touch-points each phase repeats:
 
 - `workers/api/db/schema/<x>.ts` → export from `schema/index.ts` → `pnpm db:generate && pnpm db:migrate:local`
 - `repositories/<x>-repo.ts` (only place Drizzle runs; every query scoped by `org_id`)
@@ -45,23 +46,26 @@ D1 `ari` created + migrated (local & remote); `pnpm doctor`/`typecheck`/`test`
 `CLERK_SECRET_KEY` / `CLERK_PUBLISHABLE_KEY` / `APP_URL` secrets set.
 *Note: still on a Clerk **development** instance — production cut-over is Phase 8.*
 
-### [ ] Phase 1 — Events (rename `items` → `events`)
+### [x] Phase 1 — Events (replaced `items`)  *(done 2026-06-12)*
 **Goal:** sign in → create an event (name, optional date/venue/notes) → see it in
 a list → activate it; exactly **one active event per user** at a time.
 **Slice:** schema `events` → `events-repo` → `events-service` → `events-controller`
-→ `app/routes/app/events-list.tsx` (replaces the items index route).
-**Build:**
-- Copy the `items` slice end-to-end (workshop §2), renaming `item` → `event`.
-- Schema: `id, orgId, userId, name, date, venue, notes, status('draft'|'active'|'archived'), createdAt, updatedAt`.
-- Service rule (PRD F1.4): activating an event archives any other active event for
-  that user — enforce in the **service**, in one transaction; expose `activate(id)`
-  and `archive(id)`. Add a `NotFoundError` path for foreign ids.
-- Keep the plan gate as a starting point: cap active+draft events via
-  `getPlan(plan).maxItems` (rename the limit later if desired).
-- Tests: repo (org-scoped CRUD), service (one-active-per-user invariant, plan gate),
-  controller (zod validation, 404 on other-org id).
-**Done when:** create → activate → the active event is badged in the list;
-switching active events archives the previous one; `pnpm test` green; deploys.
+→ `app/routes/app/events-list.tsx` (replaced the items index route).
+**Shipped:**
+- Replaced the `items` slice with `events` end-to-end; removed the items example.
+- Schema `events`: `id, orgId, userId, name, date, venue, notes, status('draft'|'active'|'archived'), createdAt, updatedAt`,
+  with an `(orgId, userId, status)` index. Reset to a single clean migration.
+- One-active-per-user enforced in the **service** (`activate`/`archive`), with the
+  deactivate+activate done atomically via `db.batch()` (D1 has no interactive
+  transaction). Existence is validated before activating so a bad id never
+  archives the live event. Per-user scoping on every repo query.
+- Plan gate caps **open** (non-archived) events via `getPlan(plan).maxItems`.
+- UI: status badges, activate/archive/delete per card, new-event dialog. Nav + the
+  `/api/events` controller wired in; `app/routes.ts` index points at events.
+- Tests: 8 added (repo one-active invariant + cross-user isolation, service guards,
+  controller routes/validation) — **69/69 green**; typecheck + production build pass.
+**Done:** create → activate → active event badged; activating another archives the
+previous; archived events still listed; `pnpm test` green; builds & deploys.
 
 ### [ ] Phase 2 — Tags
 **Goal:** create, rename, and delete tags that are **global to the user** and

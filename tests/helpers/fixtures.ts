@@ -1,9 +1,9 @@
 import { env } from "cloudflare:test";
 import { getDb, type Db } from "../../workers/api/db/client";
 import {
-  createItemsRepo,
-  type Item,
-} from "../../workers/api/repositories/items-repo";
+  createEventsRepo,
+  type Event,
+} from "../../workers/api/repositories/events-repo";
 import { createMembershipsRepo } from "../../workers/api/repositories/memberships-repo";
 import { createOrganizationsRepo } from "../../workers/api/repositories/organizations-repo";
 import { createUsersRepo } from "../../workers/api/repositories/users-repo";
@@ -33,14 +33,23 @@ export async function makeMembership(
   await createMembershipsRepo(db).upsert(orgId, userId, role);
 }
 
-export async function makeItem(
+export async function makeEvent(
   db: Db,
   orgId: string,
-  overrides: Partial<{ name: string; description: string | null }> = {},
-): Promise<Item> {
-  return createItemsRepo(db).create({
+  userId = "user_test_1",
+  overrides: Partial<{
+    name: string;
+    date: string | null;
+    venue: string | null;
+    notes: string | null;
+  }> = {},
+): Promise<Event> {
+  return createEventsRepo(db).create({
     orgId,
-    name: overrides.name ?? "First Item",
-    description: overrides.description ?? "A sample item",
+    userId,
+    name: overrides.name ?? "First Event",
+    date: overrides.date ?? "2026-06-12",
+    venue: overrides.venue ?? "Moscone West",
+    notes: overrides.notes ?? "A sample event",
   });
 }

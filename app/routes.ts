@@ -9,9 +9,9 @@ export default [
   // loaders (which 403 without an active org) never run.
   route("app/select-org", "routes/app/select-org.tsx"),
 
-  // Org-scoped dashboard. Add your own resource routes alongside `items`.
+  // Org-scoped dashboard. Add your own resource routes alongside `events`.
   route("app", "routes/app/layout.tsx", [
-    index("routes/app/items-list.tsx"),
+    index("routes/app/events-list.tsx"),
     route("members", "routes/app/members.tsx"),
   ]),
 ] satisfies RouteConfig;

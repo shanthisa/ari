@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { toast } from "sonner";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -15,32 +16,31 @@ import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 import { ApiError, apiFetch } from "~/lib/api-client.server";
 import { cn } from "~/lib/utils";
-import type { Item } from "../../../workers/api/repositories/items-repo";
+import type { Event } from "../../../workers/api/repositories/events-repo";
 import type { Organization } from "../../../workers/api/repositories/organizations-repo";
 import type { User } from "../../../workers/api/repositories/users-repo";
-import type { Route } from "./+types/items-list";
+import type { Route } from "./+types/events-list";
 
 export function meta() {
-  return [{ title: "Items — Ari" }];
+  return [{ title: "Events — Ari" }];
 }
 
-// The dashboard talks to the Hono API in-process (apiFetch) — same code path
-// as a real network client, so loaders/actions stay thin. This whole file is
-// the copy-me example for a CRUD resource: list (loader) + create/delete
-// (action), rendered with a dialog and per-row forms.
+// The dashboard talks to the Hono API in-process (apiFetch) — same code path as
+// a real network client, so loaders/actions stay thin. List (loader) + create /
+// activate / archive / delete (action), rendered with a dialog and per-row forms.
 export async function loader({ request }: Route.LoaderArgs) {
-  const [me, itemsRes] = await Promise.all([
+  const [me, eventsRes] = await Promise.all([
     apiFetch<{ org: Organization; user: User; orgRole: string | null }>(
       request,
       "/api/me",
     ),
-    apiFetch<{ items: Item[] }>(request, "/api/items"),
+    apiFetch<{ events: Event[] }>(request, "/api/events"),
   ]);
   return {
     org: me.org,
     user: me.user,
     orgRole: me.orgRole,
-    items: itemsRes.items,
+    events: eventsRes.events,
   };
 }
 
@@ -54,31 +54,42 @@ function displayName(user: User): string {
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+  const id = String(form.get("id") ?? "");
 
   if (intent === "delete") {
-    await apiFetch(request, `/api/items/${form.get("id")}`, {
-      method: "DELETE",
-    });
+    await apiFetch(request, `/api/events/${id}`, { method: "DELETE" });
+    return { ok: true };
+  }
+
+  if (intent === "activate" || intent === "archive") {
+    await apiFetch(request, `/api/events/${id}/${intent}`, { method: "POST" });
     return { ok: true };
   }
 
   // create
   const name = String(form.get("name") ?? "").trim();
-  const description = String(form.get("description") ?? "").trim();
-  if (!name) return { ok: false, error: "Give your item a name." };
+  const date = String(form.get("date") ?? "").trim();
+  const venue = String(form.get("venue") ?? "").trim();
+  const notes = String(form.get("notes") ?? "").trim();
+  if (!name) return { ok: false, error: "Give your event a name." };
 
   try {
-    await apiFetch(request, "/api/items", {
+    await apiFetch(request, "/api/events", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, description: description || undefined }),
+      body: JSON.stringify({
+        name,
+        date: date || undefined,
+        venue: venue || undefined,
+        notes: notes || undefined,
+      }),
     });
     return { ok: true, created: true };
   } catch (e) {
     if (e instanceof ApiError && e.status === 402) {
       return {
         ok: false,
-        error: "You've hit your plan's item limit — upgrade to add more.",
+        error: "You've hit your plan's event limit — archive one or upgrade.",
       };
     }
     throw e;
@@ -90,69 +101,93 @@ const dateFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
-function ItemCard({ item, index }: { item: Item; index: number }) {
+const STATUS_VARIANT = {
+  active: "default",
+  draft: "secondary",
+  archived: "outline",
+} as const;
+
+function EventCard({ event }: { event: Event }) {
   const fetcher = useFetcher();
-  const deleting = fetcher.state !== "idle";
+  const busy = fetcher.state !== "idle";
   return (
     <div
       className={cn(
         "bg-card rounded-lg border p-5 transition-opacity",
-        deleting && "opacity-40",
+        event.status === "active" && "ring-stamp/40 ring-2",
+        busy && "opacity-40",
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="form-label-mono text-muted-foreground">
-          Item № {String(index + 1).padStart(3, "0")}
-        </p>
+        <Badge variant={STATUS_VARIANT[event.status]}>{event.status}</Badge>
         <fetcher.Form method="post">
           <input type="hidden" name="intent" value="delete" />
-          <input type="hidden" name="id" value={item.id} />
+          <input type="hidden" name="id" value={event.id} />
           <button
             type="submit"
-            disabled={deleting}
+            disabled={busy}
             className="form-label-mono text-muted-foreground/60 hover:text-destructive text-[10px] transition-colors"
           >
             Delete
           </button>
         </fetcher.Form>
       </div>
-      <h2 className="mt-2 truncate text-xl">{item.name}</h2>
-      {item.description && (
-        <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
-          {item.description}
+      <h2 className="mt-3 truncate text-xl">{event.name}</h2>
+      <p className="text-muted-foreground mt-1 text-sm">
+        {event.date ? dateFormat.format(new Date(`${event.date}T00:00:00Z`)) : "No date"}
+        {event.venue && <> · {event.venue}</>}
+      </p>
+      {event.notes && (
+        <p className="text-muted-foreground mt-2 line-clamp-2 text-sm">
+          {event.notes}
         </p>
       )}
       <div className="rule-perforated mt-4" />
-      <p className="form-label-mono text-muted-foreground/70 mt-3 text-[10px]">
-        {dateFormat.format(new Date(item.updatedAt * 1000))}
-      </p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        {event.status === "active" ? (
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="archive" />
+            <input type="hidden" name="id" value={event.id} />
+            <Button type="submit" variant="outline" size="sm" disabled={busy}>
+              Archive
+            </Button>
+          </fetcher.Form>
+        ) : (
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="activate" />
+            <input type="hidden" name="id" value={event.id} />
+            <Button type="submit" size="sm" disabled={busy}>
+              {busy ? "…" : "Activate"}
+            </Button>
+          </fetcher.Form>
+        )}
+      </div>
     </div>
   );
 }
 
-function NewItemDialog() {
+function NewEventDialog() {
   const fetcher = useFetcher<typeof action>();
   const [open, setOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const busy = fetcher.state !== "idle";
 
-  // Close + reset on a successful create; surface a toast.
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.created) {
       setOpen(false);
       formRef.current?.reset();
-      toast.success("Item created");
+      toast.success("Event created");
     }
   }, [fetcher.state, fetcher.data]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button onClick={() => setOpen(true)}>New item</Button>
+      <Button onClick={() => setOpen(true)}>New event</Button>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New item</DialogTitle>
+          <DialogTitle>New event</DialogTitle>
           <DialogDescription>
-            Items are scoped to your active organization.
+            Name it now; activate it when you arrive.
           </DialogDescription>
         </DialogHeader>
         <fetcher.Form method="post" ref={formRef} className="space-y-4">
@@ -161,18 +196,33 @@ function NewItemDialog() {
             <Input
               id="name"
               name="name"
-              placeholder="Onboarding flow"
+              placeholder="RailsConf 2026"
               autoFocus
               required
               className="mt-1.5"
             />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="date">Date</Label>
+              <Input id="date" name="date" type="date" className="mt-1.5" />
+            </div>
+            <div>
+              <Label htmlFor="venue">Venue</Label>
+              <Input
+                id="venue"
+                name="venue"
+                placeholder="Moscone West"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="notes">Notes</Label>
             <Textarea
-              id="description"
-              name="description"
-              placeholder="What is this item about?"
+              id="notes"
+              name="notes"
+              placeholder="Who are you hoping to meet?"
               className="mt-1.5"
             />
           </div>
@@ -181,7 +231,7 @@ function NewItemDialog() {
           )}
           <DialogFooter>
             <Button type="submit" disabled={busy}>
-              {busy ? "Creating…" : "Create item"}
+              {busy ? "Creating…" : "Create event"}
             </Button>
           </DialogFooter>
         </fetcher.Form>
@@ -190,8 +240,8 @@ function NewItemDialog() {
   );
 }
 
-export default function ItemsList({ loaderData }: Route.ComponentProps) {
-  const { org, user, orgRole, items } = loaderData;
+export default function EventsList({ loaderData }: Route.ComponentProps) {
+  const { org, user, orgRole, events } = loaderData;
   const role = (orgRole ?? "org:member").replace(/^org:/, "");
   return (
     <div>
@@ -200,31 +250,31 @@ export default function ItemsList({ loaderData }: Route.ComponentProps) {
           <p className="form-label-mono text-muted-foreground">
             {org.name} · {org.plan} plan
           </p>
-          <h1 className="mt-2 text-3xl">Items</h1>
+          <h1 className="mt-2 text-3xl">Events</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Signed in as{" "}
             <span className="text-foreground">{displayName(user)}</span> ·{" "}
             <span className="font-mono text-xs">{role}</span> of {org.name}
           </p>
         </div>
-        <NewItemDialog />
+        <NewEventDialog />
       </div>
 
       <div className="rule-perforated mt-6" />
 
-      {items.length === 0 ? (
+      {events.length === 0 ? (
         <div className="mt-16 flex flex-col items-center gap-4 text-center">
-          <span className="stamp -rotate-3">Nothing here yet</span>
-          <h2 className="text-2xl">Your first item is one click away.</h2>
+          <span className="stamp -rotate-3">No events yet</span>
+          <h2 className="text-2xl">Set up your first event in under 2 minutes.</h2>
           <p className="text-muted-foreground max-w-sm text-sm">
-            This list is the example resource. Rename it, copy it, and build
-            the thing your app is actually about.
+            Name the occasion, then activate it when you walk in — Ari drops you
+            straight into capture mode.
           </p>
         </div>
       ) : (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item, i) => (
-            <ItemCard key={item.id} item={item} index={i} />
+          {events.map((event) => (
+            <EventCard key={event.id} event={event} />
           ))}
         </div>
       )}
