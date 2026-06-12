@@ -4,21 +4,29 @@ import { createContactsControllers } from "../../workers/api/controllers/contact
 import { domainErrorHandler } from "../../workers/api/controllers/error-handler";
 import { NotFoundError } from "../../workers/api/services/errors";
 import type { ApiEnv } from "../../workers/api/types";
-import { fakeContact, mockContactsService } from "../helpers/mocks";
+import {
+  fakeContact,
+  fakePhoto,
+  mockContactsService,
+  mockUploadsService,
+} from "../helpers/mocks";
 
-function makeApp(contacts = mockContactsService()) {
+function makeApp(
+  contacts = mockContactsService(),
+  uploads = mockUploadsService(),
+) {
   const app = new Hono<ApiEnv>();
   app.onError(domainErrorHandler);
   app.use(async (c, next) => {
     c.set("orgId", "org_test_1");
     c.set("userId", "user_test_1");
-    c.set("services", { contacts } as never);
+    c.set("services", { contacts, uploads } as never);
     await next();
   });
   const { byEvent, byId } = createContactsControllers();
   app.route("/events/:eventId/contacts", byEvent);
   app.route("/contacts", byId);
-  return { app, contacts };
+  return { app, contacts, uploads };
 }
 
 function json(body: unknown, method = "POST"): RequestInit {
@@ -117,9 +125,9 @@ describe("contacts controller", () => {
     expect(contacts.update).not.toHaveBeenCalled();
   });
 
-  it("DELETE /contacts/:id deletes", async () => {
-    const { app, contacts } = makeApp();
-    contacts.delete.mockResolvedValue(undefined);
+  it("DELETE /contacts/:id deletes and cleans up its R2 objects", async () => {
+    const { app, contacts, uploads } = makeApp();
+    contacts.delete.mockResolvedValue(["k1", "k2"]);
 
     const res = await app.request("/contacts/contact_1", { method: "DELETE" });
     expect(res.status).toBe(200);
@@ -128,5 +136,76 @@ describe("contacts controller", () => {
       "user_test_1",
       "contact_1",
     );
+    expect(uploads.delete).toHaveBeenCalledWith("k1");
+    expect(uploads.delete).toHaveBeenCalledWith("k2");
+  });
+
+  describe("photos", () => {
+    it("POST /contacts/:id/photos uploads a file", async () => {
+      const { app, contacts } = makeApp();
+      contacts.addPhoto.mockResolvedValue(fakePhoto());
+
+      const fd = new FormData();
+      fd.append(
+        "file",
+        new File([new Uint8Array([1, 2, 3])], "p.jpg", { type: "image/jpeg" }),
+      );
+      fd.append("width", "800");
+      fd.append("height", "600");
+      const res = await app.request("/contacts/contact_1/photos", {
+        method: "POST",
+        body: fd,
+      });
+      expect(res.status).toBe(201);
+      expect(contacts.addPhoto).toHaveBeenCalledWith(
+        "org_test_1",
+        "user_test_1",
+        "contact_1",
+        expect.objectContaining({
+          contentType: "image/jpeg",
+          width: 800,
+          height: 600,
+        }),
+      );
+    });
+
+    it("POST /contacts/:id/photos 400s without a file", async () => {
+      const { app } = makeApp();
+      const res = await app.request("/contacts/contact_1/photos", {
+        method: "POST",
+        body: new FormData(),
+      });
+      expect(res.status).toBe(422); // ValidationError
+    });
+
+    it("GET /contacts/:id/photos/:photoId streams the object", async () => {
+      const { app, contacts, uploads } = makeApp();
+      contacts.getPhoto.mockResolvedValue(
+        fakePhoto({ contentType: "image/png", r2Key: "k" }),
+      );
+      uploads.get.mockResolvedValue({ body: "bytes", httpEtag: '"e"' });
+
+      const res = await app.request("/contacts/contact_1/photos/photo_1");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      expect(uploads.get).toHaveBeenCalledWith("k");
+    });
+
+    it("DELETE /contacts/:id/photos/:photoId removes the object", async () => {
+      const { app, contacts, uploads } = makeApp();
+      contacts.deletePhoto.mockResolvedValue("the/key.jpg");
+
+      const res = await app.request("/contacts/contact_1/photos/photo_1", {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(200);
+      expect(contacts.deletePhoto).toHaveBeenCalledWith(
+        "org_test_1",
+        "user_test_1",
+        "contact_1",
+        "photo_1",
+      );
+      expect(uploads.delete).toHaveBeenCalledWith("the/key.jpg");
+    });
   });
 });

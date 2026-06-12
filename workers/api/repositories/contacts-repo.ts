@@ -1,16 +1,31 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "~/lib/id";
 import type { Db } from "../db/client";
-import { contactTags, contacts, tags } from "../db/schema";
+import { contactPhotos, contactTags, contacts, tags } from "../db/schema";
 import { now } from "../db/schema/helpers";
 import type { Tag } from "./tags-repo";
 
 // The repository is the ONLY layer that touches Drizzle/D1. Every query is
-// scoped by `orgId` AND `userId`. Contacts hydrate their tags so the UI can
-// render labels without a second round-trip.
+// scoped by `orgId` AND `userId`. Contacts hydrate their tags and photo
+// metadata so the UI can render labels and thumbnails without extra round-trips.
 
 export type Contact = typeof contacts.$inferSelect;
-export type ContactWithTags = Contact & { tags: Tag[] };
+export type ContactPhoto = typeof contactPhotos.$inferSelect;
+export type ContactWithDetails = Contact & {
+  tags: Tag[];
+  photos: ContactPhoto[];
+};
+
+export interface PhotoCreate {
+  orgId: string;
+  userId: string;
+  contactId: string;
+  r2Key: string;
+  contentType: string;
+  byteSize: number;
+  width?: number | null;
+  height?: number | null;
+}
 
 export interface ContactCreate {
   /** Client-generated id for idempotent retries; falls back to a server id. */
@@ -50,16 +65,41 @@ export function createContactsRepo(db: Db) {
     return map;
   }
 
-  async function hydrate(rows: Contact[]): Promise<ContactWithTags[]> {
-    const byContact = await tagsFor(rows.map((r) => r.id));
-    return rows.map((r) => ({ ...r, tags: byContact.get(r.id) ?? [] }));
+  /** Group photo metadata for a set of contact ids (newest first). */
+  async function photosFor(ids: string[]): Promise<Map<string, ContactPhoto[]>> {
+    const map = new Map<string, ContactPhoto[]>();
+    if (ids.length === 0) return map;
+    const rows = await db
+      .select()
+      .from(contactPhotos)
+      .where(inArray(contactPhotos.contactId, ids))
+      .orderBy(desc(contactPhotos.createdAt));
+    for (const row of rows) {
+      const list = map.get(row.contactId) ?? [];
+      list.push(row);
+      map.set(row.contactId, list);
+    }
+    return map;
+  }
+
+  async function hydrate(rows: Contact[]): Promise<ContactWithDetails[]> {
+    const ids = rows.map((r) => r.id);
+    const [tagsByContact, photosByContact] = await Promise.all([
+      tagsFor(ids),
+      photosFor(ids),
+    ]);
+    return rows.map((r) => ({
+      ...r,
+      tags: tagsByContact.get(r.id) ?? [],
+      photos: photosByContact.get(r.id) ?? [],
+    }));
   }
 
   async function getById(
     orgId: string,
     userId: string,
     id: string,
-  ): Promise<ContactWithTags | null> {
+  ): Promise<ContactWithDetails | null> {
     const [row] = await db
       .select()
       .from(contacts)
@@ -91,7 +131,7 @@ export function createContactsRepo(db: Db) {
       orgId: string,
       userId: string,
       eventId: string,
-    ): Promise<ContactWithTags[]> {
+    ): Promise<ContactWithDetails[]> {
       return db
         .select()
         .from(contacts)
@@ -108,7 +148,7 @@ export function createContactsRepo(db: Db) {
 
     /** Idempotent on the (client-provided) id: a retry with the same id returns
      * the existing contact untouched rather than creating a duplicate. */
-    async create(input: ContactCreate): Promise<ContactWithTags> {
+    async create(input: ContactCreate): Promise<ContactWithDetails> {
       const id = input.id ?? newId();
       const existing = await getById(input.orgId, input.userId, id);
       if (existing) return existing;
@@ -137,7 +177,7 @@ export function createContactsRepo(db: Db) {
       id: string,
       patch: ContactUpdate,
       tagIds?: string[],
-    ): Promise<ContactWithTags | null> {
+    ): Promise<ContactWithDetails | null> {
       const set: Partial<typeof contacts.$inferInsert> = { updatedAt: now() };
       if (patch.name !== undefined) set.name = patch.name;
       if (patch.note !== undefined) set.note = patch.note;
@@ -158,7 +198,14 @@ export function createContactsRepo(db: Db) {
       return getById(orgId, userId, id);
     },
 
-    async delete(orgId: string, userId: string, id: string): Promise<boolean> {
+    /** Delete the contact with its tag links and photo rows (atomically).
+     * Returns the deleted photos' R2 keys so the caller can clean up the
+     * bucket, or null if the contact wasn't found. */
+    async delete(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<string[] | null> {
       const [row] = await db
         .select({ id: contacts.id })
         .from(contacts)
@@ -170,13 +217,79 @@ export function createContactsRepo(db: Db) {
           ),
         )
         .limit(1);
-      if (!row) return false;
-      // Remove join rows then the contact, atomically (D1 has no interactive tx).
+      if (!row) return null;
+      const photos = await db
+        .select({ r2Key: contactPhotos.r2Key })
+        .from(contactPhotos)
+        .where(eq(contactPhotos.contactId, id));
+      // Remove join rows, photo rows, then the contact, atomically.
       await db.batch([
         db.delete(contactTags).where(eq(contactTags.contactId, id)),
+        db.delete(contactPhotos).where(eq(contactPhotos.contactId, id)),
         db.delete(contacts).where(eq(contacts.id, id)),
       ]);
-      return true;
+      return photos.map((p) => p.r2Key);
+    },
+
+    async addPhoto(input: PhotoCreate): Promise<ContactPhoto> {
+      const [row] = await db
+        .insert(contactPhotos)
+        .values({
+          id: newId(),
+          orgId: input.orgId,
+          userId: input.userId,
+          contactId: input.contactId,
+          r2Key: input.r2Key,
+          contentType: input.contentType,
+          byteSize: input.byteSize,
+          width: input.width ?? null,
+          height: input.height ?? null,
+        })
+        .returning();
+      return row;
+    },
+
+    /** Fetch a single photo, scoped to its owner and contact (for serving). */
+    async getPhoto(
+      orgId: string,
+      userId: string,
+      contactId: string,
+      photoId: string,
+    ): Promise<ContactPhoto | null> {
+      const [row] = await db
+        .select()
+        .from(contactPhotos)
+        .where(
+          and(
+            eq(contactPhotos.orgId, orgId),
+            eq(contactPhotos.userId, userId),
+            eq(contactPhotos.contactId, contactId),
+            eq(contactPhotos.id, photoId),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    },
+
+    /** Delete a photo row, returning it (with its R2 key) or null if missing. */
+    async deletePhoto(
+      orgId: string,
+      userId: string,
+      contactId: string,
+      photoId: string,
+    ): Promise<ContactPhoto | null> {
+      const [row] = await db
+        .delete(contactPhotos)
+        .where(
+          and(
+            eq(contactPhotos.orgId, orgId),
+            eq(contactPhotos.userId, userId),
+            eq(contactPhotos.contactId, contactId),
+            eq(contactPhotos.id, photoId),
+          ),
+        )
+        .returning();
+      return row ?? null;
     },
 
     /** How many of this user's contacts carry a given tag (for the tag-delete

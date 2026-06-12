@@ -130,12 +130,42 @@ describe("contacts repo", () => {
     });
 
     expect(await repo.countByTag(tag.id)).toBe(1);
-    expect(await repo.delete("org_c_del", "user_other", contact.id)).toBe(
-      false,
-    );
-    expect(await repo.delete("org_c_del", USER, contact.id)).toBe(true);
+    // non-owner: not found → null; owner: returns photo keys ([] here, no photos)
+    expect(await repo.delete("org_c_del", "user_other", contact.id)).toBeNull();
+    expect(await repo.delete("org_c_del", USER, contact.id)).toEqual([]);
     expect(await repo.getById("org_c_del", USER, contact.id)).toBeNull();
     expect(await repo.countByTag(tag.id)).toBe(0); // link removed too
+  });
+
+  it("hydrates photos, serves/deletes them scoped, and delete returns keys", async () => {
+    const { db, event } = await seedEvent("org_c_photo");
+    const repo = createContactsRepo(db);
+    const contact = await makeContact(db, "org_c_photo", event.id, USER);
+
+    const photo = await repo.addPhoto({
+      orgId: "org_c_photo",
+      userId: USER,
+      contactId: contact.id,
+      r2Key: "org_c_photo/c/x.jpg",
+      contentType: "image/jpeg",
+      byteSize: 100,
+    });
+
+    // hydrated onto the contact
+    const hydrated = await repo.getById("org_c_photo", USER, contact.id);
+    expect(hydrated?.photos.map((p) => p.id)).toEqual([photo.id]);
+
+    // serving scope
+    expect(
+      await repo.getPhoto("org_c_photo", USER, contact.id, photo.id),
+    ).not.toBeNull();
+    expect(
+      await repo.getPhoto("org_c_photo", "user_other", contact.id, photo.id),
+    ).toBeNull();
+
+    // deleting the contact returns its photo keys for R2 cleanup
+    const keys = await repo.delete("org_c_photo", USER, contact.id);
+    expect(keys).toEqual(["org_c_photo/c/x.jpg"]);
   });
 
   it("detachTag removes a tag from all contacts", async () => {

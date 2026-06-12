@@ -21,17 +21,14 @@
 			"database_id": "3e5ba8f5-84dc-4bed-bccc-a2f093aaa8fc",
 			"migrations_dir": "drizzle/migrations"
 		}
-	]
+	],
+	// Private contact photos (Phase 4). Served only through authenticated worker
+	// routes — public access on the bucket stays OFF.
+	"r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ari-uploads" }]
 	/**
 	 * Static Assets — uncomment when you install the `widget-embed` skill so
 	 * that /widget.js (built into ./public) is served by the Worker.
 	 * https://developers.cloudflare.com/workers/static-assets/binding/
 	 */
 	// "assets": { "directory": "./public/", "binding": "ASSETS" }
-	/**
-	 * R2 bucket — uncomment when you install the `r2-uploads` skill.
-	 * Create it first: npx wrangler r2 bucket create ari-uploads
-	 * https://developers.cloudflare.com/r2/
-	 */
-	// "r2_buckets": [ { "binding": "UPLOADS", "bucket_name": "ari-uploads" } ]
 }

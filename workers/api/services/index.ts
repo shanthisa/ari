@@ -9,6 +9,7 @@ import { createUsersRepo } from "../repositories/users-repo";
 import { createContactsService } from "./contacts-service";
 import { createEventsService } from "./events-service";
 import { createTagsService } from "./tags-service";
+import { createUploadsService } from "./uploads-service";
 import { createMembersService } from "./members-service";
 import { createOrganizationsService } from "./organizations-service";
 import { createUsersService } from "./users-service";
@@ -28,6 +29,7 @@ export function createServices(env: Env) {
   const eventsRepo = createEventsRepo(db);
   const tagsRepo = createTagsRepo(db);
   const contactsRepo = createContactsRepo(db);
+  const uploads = createUploadsService({ bucket: env.UPLOADS });
 
   return {
     organizations: createOrganizationsService({ orgsRepo }),
@@ -35,7 +37,13 @@ export function createServices(env: Env) {
     members: createMembersService({ membershipsRepo, usersRepo }),
     events: createEventsService({ eventsRepo, usageRepo }),
     tags: createTagsService({ tagsRepo, contactsRepo }),
-    contacts: createContactsService({ contactsRepo, eventsRepo, tagsRepo }),
+    contacts: createContactsService({
+      contactsRepo,
+      eventsRepo,
+      tagsRepo,
+      uploads,
+    }),
+    uploads,
   };
 }
 

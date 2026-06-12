@@ -44,6 +44,31 @@ export const contacts = sqliteTable(
   ],
 );
 
+/** Photos attached to a contact (face, badge). The bytes live in R2 under
+ * `r2Key`; this table is the metadata index. Photos are private — served only
+ * through an authenticated worker route, never a public bucket (PRD §7). */
+export const contactPhotos = sqliteTable(
+  "contact_photos",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    userId: text("user_id").notNull(),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contacts.id),
+    /** Object key in the R2 bucket (`orgId/contactId/<random>.<ext>`). */
+    r2Key: text("r2_key").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("contact_photos_contact_idx").on(t.contactId)],
+);
+
 /** Join table: which tags are on which contacts. */
 export const contactTags = sqliteTable(
   "contact_tags",

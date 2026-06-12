@@ -1,5 +1,8 @@
 import { vi } from "vitest";
-import type { ContactWithTags } from "../../workers/api/repositories/contacts-repo";
+import type {
+  ContactPhoto,
+  ContactWithDetails,
+} from "../../workers/api/repositories/contacts-repo";
 import type { Event } from "../../workers/api/repositories/events-repo";
 import type { Membership } from "../../workers/api/repositories/memberships-repo";
 import type { Tag } from "../../workers/api/repositories/tags-repo";
@@ -103,8 +106,8 @@ export function mockTagsService() {
 }
 
 export function fakeContact(
-  overrides: Partial<ContactWithTags> = {},
-): ContactWithTags {
+  overrides: Partial<ContactWithDetails> = {},
+): ContactWithDetails {
   return {
     id: "contact_1",
     orgId: "org_test_1",
@@ -119,6 +122,23 @@ export function fakeContact(
     createdAt: 1_700_000_000,
     updatedAt: 1_700_000_000,
     tags: [],
+    photos: [],
+    ...overrides,
+  };
+}
+
+export function fakePhoto(overrides: Partial<ContactPhoto> = {}): ContactPhoto {
+  return {
+    id: "photo_1",
+    orgId: "org_test_1",
+    userId: "user_test_1",
+    contactId: "contact_1",
+    r2Key: "org_test_1/contact_1/abc.jpg",
+    contentType: "image/jpeg",
+    byteSize: 12345,
+    width: 800,
+    height: 600,
+    createdAt: 1_700_000_000,
     ...overrides,
   };
 }
@@ -132,6 +152,9 @@ export function mockContactsRepo() {
     delete: vi.fn(),
     countByTag: vi.fn(),
     detachTag: vi.fn(),
+    addPhoto: vi.fn(),
+    getPhoto: vi.fn(),
+    deletePhoto: vi.fn(),
   };
 }
 
@@ -142,6 +165,28 @@ export function mockContactsService() {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    addPhoto: vi.fn(),
+    getPhoto: vi.fn(),
+    deletePhoto: vi.fn(),
+  };
+}
+
+/** Minimal UploadsService double. */
+export function mockUploadsService() {
+  return {
+    photoKey: vi.fn(() => "org_test_1/contact_1/generated.jpg"),
+    put: vi.fn(),
+    get: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
+/** Minimal R2Bucket double for the uploads-service unit test. */
+export function fakeBucket() {
+  return {
+    put: vi.fn(async () => ({})),
+    get: vi.fn(),
+    delete: vi.fn(async () => undefined),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useFetcher } from "react-router";
+import { Link, useFetcher, useRevalidator } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -17,7 +17,8 @@ import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 import { apiFetch } from "~/lib/api-client.server";
 import type {
-  ContactWithTags,
+  ContactPhoto,
+  ContactWithDetails,
 } from "../../../workers/api/repositories/contacts-repo";
 import type { Event } from "../../../workers/api/repositories/events-repo";
 import type { Tag } from "../../../workers/api/repositories/tags-repo";
@@ -31,7 +32,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { eventId } = params;
   const [eventRes, contactsRes, tagsRes] = await Promise.all([
     apiFetch<{ event: Event }>(request, `/api/events/${eventId}`),
-    apiFetch<{ contacts: ContactWithTags[] }>(
+    apiFetch<{ contacts: ContactWithDetails[] }>(
       request,
       `/api/events/${eventId}/contacts`,
     ),
@@ -242,11 +243,135 @@ function CaptureForm({ tags }: { tags: Tag[] }) {
   );
 }
 
+/** Authenticated, private URL for a contact photo (served by the worker). */
+function photoUrl(contactId: string, photoId: string): string {
+  return `/api/contacts/${contactId}/photos/${photoId}`;
+}
+
+/** Downscale + re-encode an image client-side before upload — kind to
+ * conference Wi-Fi, and keeps objects small (PRD F2.3, ~500 KB target). */
+async function downscaleImage(
+  file: File,
+  max = 1600,
+  quality = 0.8,
+): Promise<{ blob: Blob; width: number; height: number }> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, width, height);
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("encode failed"))),
+      "image/jpeg",
+      quality,
+    ),
+  );
+  return { blob, width, height };
+}
+
+/** Photo thumbnails + add/delete. Uploads go straight to the authed API (not
+ * through the route action) so the multipart body isn't re-encoded; the loader
+ * is revalidated afterward to refresh the list. */
+function PhotoManager({ contact }: { contact: ContactWithDetails }) {
+  const revalidator = useRevalidator();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { blob, width, height } = await downscaleImage(file);
+      const fd = new FormData();
+      fd.append("file", blob, "photo.jpg");
+      fd.append("width", String(width));
+      fd.append("height", String(height));
+      const res = await fetch(`/api/contacts/${contact.id}/photos`, {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Photo added");
+      revalidator.revalidate();
+    } catch {
+      toast.error("Couldn’t add that photo");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function onDelete(photo: ContactPhoto) {
+    setBusy(true);
+    try {
+      const res = await fetch(photoUrl(contact.id, photo.id), {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      revalidator.revalidate();
+    } catch {
+      toast.error("Couldn’t remove that photo");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      {contact.photos.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {contact.photos.map((p) => (
+            <div key={p.id} className="relative">
+              <img
+                src={photoUrl(contact.id, p.id)}
+                alt=""
+                className="size-20 rounded border object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => onDelete(p)}
+                disabled={busy}
+                aria-label="Remove photo"
+                className="bg-background absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border text-xs leading-none shadow-sm"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onPick}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+        className="mt-2"
+      >
+        {busy ? "Uploading…" : "Add photo"}
+      </Button>
+    </div>
+  );
+}
+
 function EditContactDialog({
   contact,
   tags,
 }: {
-  contact: ContactWithTags;
+  contact: ContactWithDetails;
   tags: Tag[];
 }) {
   const fetcher = useFetcher<typeof action>();
@@ -273,8 +398,12 @@ function EditContactDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit contact</DialogTitle>
-          <DialogDescription>Update name, tags, and note.</DialogDescription>
+          <DialogDescription>Update name, tags, note, and photos.</DialogDescription>
         </DialogHeader>
+        <div className="space-y-1.5">
+          <Label>Photos</Label>
+          <PhotoManager contact={contact} />
+        </div>
         <fetcher.Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update" />
           <input type="hidden" name="contactId" value={contact.id} />
@@ -317,7 +446,7 @@ function ContactCard({
   contact,
   tags,
 }: {
-  contact: ContactWithTags;
+  contact: ContactWithDetails;
   tags: Tag[];
 }) {
   const fetcher = useFetcher();
@@ -343,6 +472,18 @@ function ContactCard({
           </fetcher.Form>
         </div>
       </div>
+      {contact.photos.length > 0 && (
+        <div className="mt-2 flex gap-1.5">
+          {contact.photos.slice(0, 4).map((p) => (
+            <img
+              key={p.id}
+              src={photoUrl(contact.id, p.id)}
+              alt=""
+              className="size-12 rounded border object-cover"
+            />
+          ))}
+        </div>
+      )}
       {contact.tags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {contact.tags.map((t) => (

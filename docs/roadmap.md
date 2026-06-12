@@ -114,25 +114,34 @@ location) and see/edit it. Name is *softly* required: an empty name saves as
 **Done:** open an event → capture a contact with tags + note (+ coords when
 granted) → appears newest-first; edit and delete work; `pnpm test` green; deploys.
 
-### [ ] Phase 4 — Contact photos (R2)
+### [x] Phase 4 — Contact photos (R2)  *(done 2026-06-12)*
 **Goal:** a contact can carry **multiple** photos (face + badge), private and
 access-controlled (PRD F2.3, §7).
-**Slice:** install `r2-uploads` skill → schema `contact_photos` → repo → service
-→ upload + authenticated-serve controller routes → photo UI on capture/detail.
-**Build:**
-- `pnpm install-skill r2-uploads`; create the bucket
-  (`npx wrangler r2 bucket create ari-uploads`), uncomment the R2 binding in
-  `wrangler.jsonc`, add `R2_PUBLIC_BASE_URL` per the skill's checklist. Wire the
-  adapter into `createServices` (services/index.ts).
-- `contact_photos`: `id, contactId, r2Key, width, height, byteSize, createdAt`.
-- Client-side downscale/compress before upload (target ≤ ~500 KB/photo — kind to
-  conference Wi-Fi). Serve through an **authenticated worker route**, never a
-  public bucket; URLs not guessable or long-lived.
-- Deleting a contact (and removing a photo) **deletes the R2 object**, not just the
-  row — run the R2 delete in `waitUntil(...)` (PRD §7; AGENTS.md side-effects rule).
-- Tests: photo repo, upload/serve auth (403 cross-org/cross-user), delete cleanup.
-**Done when:** add two photos to a contact, reload, both render via authed URLs;
-deleting the contact removes the objects; `pnpm test` green; deploys.
+**Slice:** `r2-uploads` skill (plumbing) → schema `contact_photos` → repo →
+`uploads-service` + contacts photo methods → upload/serve/delete routes → photo UI.
+**Shipped:**
+- `contact_photos` (`id, orgId, userId, contactId, r2Key, contentType, byteSize,
+  width, height, …`); the repo hydrates each contact's photos alongside tags.
+- **Private serving** (deviates from the skill's public-URL default per PRD §7):
+  `uploads-service` is a thin R2 adapter (no public URL); bytes are returned only
+  through the authenticated `GET /api/contacts/:id/photos/:photoId`. Keys are
+  `orgId/contactId/<ulid>.<ext>` — org-scoped and unguessable.
+- Upload `POST /api/contacts/:id/photos` (multipart): validates image type + size
+  (≤6 MB, ~500 KB client target), stores in R2, indexes the row. Client-side
+  canvas downscale before upload.
+- Delete cleans R2: removing a photo or a whole contact deletes the objects in
+  `waitUntil(...)` (the repo delete returns the keys; the controller schedules it).
+- UI: thumbnails on contact cards + a photo manager in the edit dialog (add via
+  camera/library, delete), revalidating after each change.
+- R2 binding added to `wrangler.jsonc` (public access stays OFF); `env.UPLOADS`
+  typed via cf-typegen. No `R2_PUBLIC_BASE_URL` needed (private serving).
+- Tests: 15 added (uploads-service, repo photo hydration/scoping/delete-keys,
+  service validation+ownership, controller upload/serve/delete) — **129/129 green**;
+  typecheck + build pass. Migration `0003_bitter_nitro` (additive).
+- R2 enabled on the account; bucket `ari-uploads` created (public access OFF);
+  migration applied remote; **deployed**.
+**Done:** add photos, reload, they render via authed URLs; deleting the contact
+removes the objects; `pnpm test` green; deployed.
 
 ### [ ] Phase 5 — Event mode + PWA
 **Goal:** the 10-second, one-handed mobile capture experience, plus installability

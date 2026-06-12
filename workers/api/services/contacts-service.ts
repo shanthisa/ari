@@ -1,19 +1,39 @@
 import type {
-  ContactWithTags,
+  ContactPhoto,
+  ContactWithDetails,
   ContactsRepo,
 } from "../repositories/contacts-repo";
 import type { EventsRepo } from "../repositories/events-repo";
 import type { TagsRepo } from "../repositories/tags-repo";
-import { NotFoundError } from "./errors";
+import type { UploadsService } from "./uploads-service";
+import { NotFoundError, ValidationError } from "./errors";
 
 // Business rules for contacts: the contact must belong to one of the user's own
 // events, an empty name softly becomes "Unknown" (PRD F2.4 — a photo-only
-// capture is never blocked), and only the user's own tags can be attached.
+// capture is never blocked), only the user's own tags can be attached, and
+// photos are stored privately in R2 (bytes never leave through a public URL).
+
+const MAX_PHOTO_BYTES = 6 * 1024 * 1024; // headroom over the ~500KB client target
+const ALLOWED_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+export interface PhotoUpload {
+  contentType: string;
+  size: number;
+  body: ReadableStream | ArrayBuffer | Blob;
+  width?: number | null;
+  height?: number | null;
+}
 
 export interface ContactsServiceDeps {
   contactsRepo: ContactsRepo;
   eventsRepo: EventsRepo;
   tagsRepo: TagsRepo;
+  uploads: UploadsService;
 }
 
 export interface ContactInput {
@@ -31,6 +51,7 @@ export function createContactsService({
   contactsRepo,
   eventsRepo,
   tagsRepo,
+  uploads,
 }: ContactsServiceDeps) {
   async function requireEvent(orgId: string, userId: string, eventId: string) {
     const event = await eventsRepo.getById(orgId, userId, eventId);
@@ -59,7 +80,7 @@ export function createContactsService({
     orgId: string,
     userId: string,
     id: string,
-  ): Promise<ContactWithTags> {
+  ): Promise<ContactWithDetails> {
     const contact = await contactsRepo.getById(orgId, userId, id);
     if (!contact) throw new NotFoundError(`contact ${id} not found`);
     return contact;
@@ -70,7 +91,7 @@ export function createContactsService({
       orgId: string,
       userId: string,
       eventId: string,
-    ): Promise<ContactWithTags[]> {
+    ): Promise<ContactWithDetails[]> {
       await requireEvent(orgId, userId, eventId);
       return contactsRepo.listByEvent(orgId, userId, eventId);
     },
@@ -82,7 +103,7 @@ export function createContactsService({
       userId: string,
       eventId: string,
       input: ContactInput,
-    ): Promise<ContactWithTags> {
+    ): Promise<ContactWithDetails> {
       await requireEvent(orgId, userId, eventId);
       return contactsRepo.create({
         id: input.id,
@@ -108,7 +129,7 @@ export function createContactsService({
         note?: string | null;
         tagIds?: string[];
       },
-    ): Promise<ContactWithTags> {
+    ): Promise<ContactWithDetails> {
       await get(orgId, userId, id); // 404 if it isn't theirs
       const patch: { name?: string; note?: string | null } = {};
       if (input.name !== undefined) patch.name = cleanName(input.name);
@@ -124,9 +145,78 @@ export function createContactsService({
       return updated;
     },
 
-    async delete(orgId: string, userId: string, id: string): Promise<void> {
-      const deleted = await contactsRepo.delete(orgId, userId, id);
-      if (!deleted) throw new NotFoundError(`contact ${id} not found`);
+    /** Deletes the contact + its rows, returning the R2 keys of its photos so
+     * the caller can remove the objects from the bucket (in waitUntil). */
+    async delete(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<string[]> {
+      const photoKeys = await contactsRepo.delete(orgId, userId, id);
+      if (photoKeys === null) throw new NotFoundError(`contact ${id} not found`);
+      return photoKeys;
+    },
+
+    /** Store a photo in R2 and index it. The contact must be the user's own. */
+    async addPhoto(
+      orgId: string,
+      userId: string,
+      contactId: string,
+      file: PhotoUpload,
+    ): Promise<ContactPhoto> {
+      await get(orgId, userId, contactId); // 404 if it isn't theirs
+      if (!ALLOWED_PHOTO_TYPES.has(file.contentType)) {
+        throw new ValidationError(`unsupported image type: ${file.contentType}`);
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        throw new ValidationError("image too large (max 6 MB)");
+      }
+      const key = uploads.photoKey(orgId, contactId, file.contentType);
+      await uploads.put(key, file.body, file.contentType);
+      return contactsRepo.addPhoto({
+        orgId,
+        userId,
+        contactId,
+        r2Key: key,
+        contentType: file.contentType,
+        byteSize: file.size,
+        width: file.width,
+        height: file.height,
+      });
+    },
+
+    /** The photo row (with its R2 key) for serving — 404 if not the user's. */
+    async getPhoto(
+      orgId: string,
+      userId: string,
+      contactId: string,
+      photoId: string,
+    ): Promise<ContactPhoto> {
+      const photo = await contactsRepo.getPhoto(
+        orgId,
+        userId,
+        contactId,
+        photoId,
+      );
+      if (!photo) throw new NotFoundError(`photo ${photoId} not found`);
+      return photo;
+    },
+
+    /** Removes the photo row, returning its R2 key for bucket cleanup. */
+    async deletePhoto(
+      orgId: string,
+      userId: string,
+      contactId: string,
+      photoId: string,
+    ): Promise<string> {
+      const photo = await contactsRepo.deletePhoto(
+        orgId,
+        userId,
+        contactId,
+        photoId,
+      );
+      if (!photo) throw new NotFoundError(`photo ${photoId} not found`);
+      return photo.r2Key;
     },
   };
 }

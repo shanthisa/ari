@@ -1,4 +1,11 @@
 {
   "version": 1,
-  "skills": {}
+  "skills": {
+    "r2-uploads": {
+      "source": "bundled",
+      "sourceType": "local",
+      "skillPath": "skills/r2-uploads/SKILL.md",
+      "computedHash": "7f4dc6e5b8ace1ccb359ce91b84e2f43d5bf7748a2b28445ddc25df41ecc29c0"
+    }
+  }
 }
