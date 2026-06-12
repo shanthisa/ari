@@ -1,6 +1,7 @@
 import { clerkMiddleware } from "@clerk/hono";
 import { Hono } from "hono";
 import { domainErrorHandler } from "./controllers/error-handler";
+import { createContactsControllers } from "./controllers/contacts-controller";
 import { createEventsController } from "./controllers/events-controller";
 import { createIntegrationsController } from "./controllers/integrations-controller";
 import { createMembersController } from "./controllers/members-controller";
@@ -47,8 +48,11 @@ export function createApi() {
       membership: c.var.membership,
     }),
   );
+  const contactControllers = createContactsControllers();
+  authed.route("/events/:eventId/contacts", contactControllers.byEvent);
   authed.route("/events", createEventsController());
   authed.route("/tags", createTagsController());
+  authed.route("/contacts", contactControllers.byId);
   authed.route("/members", createMembersController());
 
   app.route("/", authed);

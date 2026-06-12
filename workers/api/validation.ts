@@ -37,3 +37,29 @@ export const tagUpdateSchema = z.object({ name: tagName });
 
 export type TagCreateInput = z.infer<typeof tagCreateSchema>;
 export type TagUpdateInput = z.infer<typeof tagUpdateSchema>;
+
+// Contacts. Name is optional (empty → "Unknown" in the service). Geolocation is
+// always optional — a denied/unavailable fix must never block a capture (F2.7).
+const tagIds = z.array(z.string()).max(50);
+
+export const contactCreateSchema = z.object({
+  id: z.string().min(1).max(64).optional(),
+  name: z.string().max(200).nullish(),
+  note: z.string().max(2000).nullish(),
+  latitude: z.number().min(-90).max(90).nullish(),
+  longitude: z.number().min(-180).max(180).nullish(),
+  accuracy: z.number().min(0).nullish(),
+  capturedAt: z.number().int().positive().optional(),
+  tagIds: tagIds.optional(),
+});
+
+export const contactUpdateSchema = z
+  .object({
+    name: z.string().max(200).nullish(),
+    note: z.string().max(2000).nullish(),
+    tagIds: tagIds.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, "no fields to update");
+
+export type ContactCreateInput = z.infer<typeof contactCreateSchema>;
+export type ContactUpdateInput = z.infer<typeof contactUpdateSchema>;

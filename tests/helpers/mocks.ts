@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { ContactWithTags } from "../../workers/api/repositories/contacts-repo";
 import type { Event } from "../../workers/api/repositories/events-repo";
 import type { Membership } from "../../workers/api/repositories/memberships-repo";
 import type { Tag } from "../../workers/api/repositories/tags-repo";
@@ -97,6 +98,49 @@ export function mockTagsService() {
     get: vi.fn(),
     create: vi.fn(),
     rename: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
+export function fakeContact(
+  overrides: Partial<ContactWithTags> = {},
+): ContactWithTags {
+  return {
+    id: "contact_1",
+    orgId: "org_test_1",
+    userId: "user_test_1",
+    eventId: "event_1",
+    name: "Ada Lovelace",
+    note: "met at the bar",
+    latitude: null,
+    longitude: null,
+    accuracy: null,
+    capturedAt: 1_700_000_000,
+    createdAt: 1_700_000_000,
+    updatedAt: 1_700_000_000,
+    tags: [],
+    ...overrides,
+  };
+}
+
+export function mockContactsRepo() {
+  return {
+    getById: vi.fn(),
+    listByEvent: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    countByTag: vi.fn(),
+    detachTag: vi.fn(),
+  };
+}
+
+export function mockContactsService() {
+  return {
+    list: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
   };
 }

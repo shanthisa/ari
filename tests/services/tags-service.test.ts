@@ -4,15 +4,16 @@ import {
   NotFoundError,
 } from "../../workers/api/services/errors";
 import { createTagsService } from "../../workers/api/services/tags-service";
-import { fakeTag, mockTagsRepo } from "../helpers/mocks";
+import { fakeTag, mockContactsRepo, mockTagsRepo } from "../helpers/mocks";
 
 const ORG = "org_test_1";
 const USER = "user_test_1";
 
 function makeService() {
   const tagsRepo = mockTagsRepo();
-  const service = createTagsService({ tagsRepo });
-  return { service, tagsRepo };
+  const contactsRepo = mockContactsRepo();
+  const service = createTagsService({ tagsRepo, contactsRepo });
+  return { service, tagsRepo, contactsRepo };
 }
 
 describe("tags service", () => {
@@ -86,12 +87,28 @@ describe("tags service", () => {
     });
   });
 
-  it("delete throws NotFoundError when nothing was deleted", async () => {
-    const { service, tagsRepo } = makeService();
-    tagsRepo.delete.mockResolvedValue(false);
+  describe("delete", () => {
+    it("throws NotFoundError when the tag isn't theirs", async () => {
+      const { service, tagsRepo, contactsRepo } = makeService();
+      tagsRepo.getById.mockResolvedValue(null);
 
-    await expect(service.delete(ORG, USER, "nope")).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+      await expect(service.delete(ORG, USER, "nope")).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      expect(contactsRepo.detachTag).not.toHaveBeenCalled();
+    });
+
+    it("detaches from contacts and reports the affected count", async () => {
+      const { service, tagsRepo, contactsRepo } = makeService();
+      tagsRepo.getById.mockResolvedValue(fakeTag({ id: "tag_1" }));
+      contactsRepo.countByTag.mockResolvedValue(3);
+      tagsRepo.delete.mockResolvedValue(true);
+
+      const result = await service.delete(ORG, USER, "tag_1");
+
+      expect(result).toEqual({ affectedContacts: 3 });
+      expect(contactsRepo.detachTag).toHaveBeenCalledWith("tag_1");
+      expect(tagsRepo.delete).toHaveBeenCalledWith(ORG, USER, "tag_1");
+    });
   });
 });

@@ -4,6 +4,10 @@ import {
   createEventsRepo,
   type Event,
 } from "../../workers/api/repositories/events-repo";
+import {
+  createContactsRepo,
+  type ContactWithTags,
+} from "../../workers/api/repositories/contacts-repo";
 import { createMembershipsRepo } from "../../workers/api/repositories/memberships-repo";
 import {
   createTagsRepo,
@@ -65,4 +69,27 @@ export async function makeTag(
   name = "investor",
 ): Promise<Tag> {
   return createTagsRepo(db).create({ orgId, userId, name });
+}
+
+export async function makeContact(
+  db: Db,
+  orgId: string,
+  eventId: string,
+  userId = "user_test_1",
+  overrides: Partial<{
+    id: string;
+    name: string;
+    note: string | null;
+    tagIds: string[];
+  }> = {},
+): Promise<ContactWithTags> {
+  return createContactsRepo(db).create({
+    id: overrides.id,
+    orgId,
+    userId,
+    eventId,
+    name: overrides.name ?? "Ada Lovelace",
+    note: overrides.note ?? "met at the bar",
+    tagIds: overrides.tagIds,
+  });
 }

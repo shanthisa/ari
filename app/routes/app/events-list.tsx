@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useFetcher } from "react-router";
+import { Link, useFetcher } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -132,7 +132,12 @@ function EventCard({ event }: { event: Event }) {
           </button>
         </fetcher.Form>
       </div>
-      <h2 className="mt-3 truncate text-xl">{event.name}</h2>
+      <Link
+        to={`/app/events/${event.id}`}
+        className="mt-3 block truncate text-xl hover:underline"
+      >
+        {event.name}
+      </Link>
       <p className="text-muted-foreground mt-1 text-sm">
         {event.date ? dateFormat.format(new Date(`${event.date}T00:00:00Z`)) : "No date"}
         {event.venue && <> · {event.venue}</>}

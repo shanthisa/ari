@@ -33,12 +33,12 @@ export function createTagsController() {
   });
 
   app.delete("/:id", async (c) => {
-    await c.var.services.tags.delete(
+    const result = await c.var.services.tags.delete(
       c.var.orgId,
       c.var.userId,
       c.req.param("id"),
     );
-    return c.json({ ok: true });
+    return c.json({ ok: true, ...result });
   });
 
   return app;

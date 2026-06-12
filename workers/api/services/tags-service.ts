@@ -1,15 +1,18 @@
+import type { ContactsRepo } from "../repositories/contacts-repo";
 import type { Tag, TagsRepo } from "../repositories/tags-repo";
 import { ConflictError, NotFoundError } from "./errors";
 
 // Services hold the business rules. For tags that's name uniqueness per user
-// (a friendly ConflictError, with the DB unique index as the backstop) and
-// "not found" semantics. Unit-tested with a mocked repo.
+// (a friendly ConflictError, with the DB unique index as the backstop), "not
+// found" semantics, and detaching from contacts on delete. Unit-tested with
+// mocked repos.
 
 export interface TagsServiceDeps {
   tagsRepo: TagsRepo;
+  contactsRepo: ContactsRepo;
 }
 
-export function createTagsService({ tagsRepo }: TagsServiceDeps) {
+export function createTagsService({ tagsRepo, contactsRepo }: TagsServiceDeps) {
   async function get(
     orgId: string,
     userId: string,
@@ -55,11 +58,19 @@ export function createTagsService({ tagsRepo }: TagsServiceDeps) {
       return renamed;
     },
 
-    /** Delete a tag. In Phase 3 this will also detach it from contacts and
-     * report the affected count; for now there are no contacts to update. */
-    async delete(orgId: string, userId: string, id: string): Promise<void> {
+    /** Delete a tag, detaching it from every contact first. Returns the number
+     * of contacts that had the tag (for the confirmation dialog). */
+    async delete(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<{ affectedContacts: number }> {
+      await get(orgId, userId, id); // 404 if it isn't theirs
+      const affectedContacts = await contactsRepo.countByTag(id);
+      await contactsRepo.detachTag(id);
       const deleted = await tagsRepo.delete(orgId, userId, id);
       if (!deleted) throw new NotFoundError(`tag ${id} not found`);
+      return { affectedContacts };
     },
   };
 }

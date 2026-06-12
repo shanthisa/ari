@@ -1,10 +1,12 @@
 import { getDb } from "../db/client";
+import { createContactsRepo } from "../repositories/contacts-repo";
 import { createEventsRepo } from "../repositories/events-repo";
 import { createMembershipsRepo } from "../repositories/memberships-repo";
 import { createOrganizationsRepo } from "../repositories/organizations-repo";
 import { createTagsRepo } from "../repositories/tags-repo";
 import { createUsageRepo } from "../repositories/usage-repo";
 import { createUsersRepo } from "../repositories/users-repo";
+import { createContactsService } from "./contacts-service";
 import { createEventsService } from "./events-service";
 import { createTagsService } from "./tags-service";
 import { createMembersService } from "./members-service";
@@ -25,13 +27,15 @@ export function createServices(env: Env) {
   const usageRepo = createUsageRepo(db);
   const eventsRepo = createEventsRepo(db);
   const tagsRepo = createTagsRepo(db);
+  const contactsRepo = createContactsRepo(db);
 
   return {
     organizations: createOrganizationsService({ orgsRepo }),
     users: createUsersService({ usersRepo }),
     members: createMembersService({ membershipsRepo, usersRepo }),
     events: createEventsService({ eventsRepo, usageRepo }),
-    tags: createTagsService({ tagsRepo }),
+    tags: createTagsService({ tagsRepo, contactsRepo }),
+    contacts: createContactsService({ contactsRepo, eventsRepo, tagsRepo }),
   };
 }
 

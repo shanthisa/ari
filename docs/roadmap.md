@@ -87,27 +87,32 @@ reusable across events (PRD F1.2).
 **Done:** build a reusable tag library; duplicates rejected with a clear message;
 `pnpm test` green; builds & deploys.
 
-### [ ] Phase 3 — Contacts (capture + review CRUD)
-**Goal:** the core journey — under an active event, capture a contact (name, note,
-tags, location) and see/edit it. Name is *softly* required: an empty name saves as
+### [x] Phase 3 — Contacts (capture + review CRUD)  *(done 2026-06-12)*
+**Goal:** the core journey — under an event, capture a contact (name, note, tags,
+location) and see/edit it. Name is *softly* required: an empty name saves as
 "Unknown" (PRD F2.4).
-**Slice:** schema `contacts` + join `contact_tags` → `contacts-repo` → service →
-controller → `app/routes/app/contacts` (list under an event + detail/edit).
-**Build:**
-- `contacts`: `id, orgId, userId, eventId, name, note, latitude, longitude, accuracy, capturedAt, createdAt, updatedAt`.
-  `contact_tags`: `(contactId, tagId)` — repo joins to hydrate tags.
-- Service: create accepts a **client-generated id** and is idempotent on it (PRD §8
-  — makes the future offline stretch a bolt-on, not a rewrite); empty name → "Unknown".
-- Loader/action capture **geolocation** client-side at save (browser Geolocation
-  API, ~5 s timeout, high-accuracy off); denied/unavailable → save without coords,
-  never blocked (PRD F2.7). Store `accuracy` so the map can render honestly later.
-- List newest-first with photo-placeholder, name, tags, note preview, capture time
-  (PRD F3.1); detail page edits all fields, add/remove tags, delete w/ confirm (F3.2).
-- Tests: repo (org+event scoping, tag hydration), service (idempotent create,
-  Unknown fallback), controller (zod, geo optional).
-**Done when:** open an event → add a contact with tags + a note → it appears
-newest-first; editing and deleting work; coords saved when permission granted;
-`pnpm test` green; deploys.
+**Slice:** schema `contacts` + join `contact_tags` → `contacts-repo` →
+`contacts-service` → `contacts-controller` → `app/routes/app/event-contacts.tsx`.
+**Shipped:**
+- `contacts` (`id, orgId, userId, eventId, name, note, latitude, longitude,
+  accuracy, capturedAt, …`) + join `contact_tags`; the repo hydrates each
+  contact's tags in one grouped query.
+- Service: contact must belong to one of the user's own events; empty name →
+  "Unknown"; attached tag ids filtered to the user's own (no cross-user leak);
+  create is **idempotent on a client-generated id** (PRD §8 offline hook).
+- Geolocation captured client-side on the capture form (Geolocation API, 5 s
+  timeout, high-accuracy off); denied/unavailable saves without coords, never
+  blocked; `accuracy` stored for honest map rendering later.
+- API: `GET/POST /api/events/:eventId/contacts`, `GET/PATCH/DELETE /api/contacts/:id`.
+- UI: event capture page (link from each event card) — capture form with tag
+  chips + live geo indicator, recent-captures list newest-first, edit dialog,
+  delete. **Closed the Phase 2 loop:** deleting a tag now detaches it from
+  contacts and reports the affected count.
+- Tests: 26 added (repo tag hydration / idempotency / scoping / detach, service
+  Unknown+event-guard+tag-filter, controller geo-validation/404) — **114/114
+  green**; typecheck + build pass. Migration `0002_wealthy_blade` (additive).
+**Done:** open an event → capture a contact with tags + note (+ coords when
+granted) → appears newest-first; edit and delete work; `pnpm test` green; deploys.
 
 ### [ ] Phase 4 — Contact photos (R2)
 **Goal:** a contact can carry **multiple** photos (face + badge), private and
