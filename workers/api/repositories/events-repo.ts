@@ -1,9 +1,10 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { newId } from "~/lib/id";
 import type { Db } from "../db/client";
-import { events } from "../db/schema";
+import { eventQuickTags, events, tags } from "../db/schema";
 import { now } from "../db/schema/helpers";
 import type { EventStatus } from "../db/schema/events";
+import type { Tag } from "./tags-repo";
 
 // The repository is the ONLY layer that touches Drizzle/D1. Every query is
 // scoped by `orgId` AND `userId` so a user only ever sees their own events
@@ -199,6 +200,34 @@ export function createEventsRepo(db: Db) {
         )
         .returning({ id: events.id });
       return rows.length > 0;
+    },
+
+    /** The event's curated quick tags, in display order. */
+    getQuickTags(eventId: string): Promise<Tag[]> {
+      return db
+        .select({ tag: tags })
+        .from(eventQuickTags)
+        .innerJoin(tags, eq(eventQuickTags.tagId, tags.id))
+        .where(eq(eventQuickTags.eventId, eventId))
+        .orderBy(asc(eventQuickTags.position))
+        .then((rows) => rows.map((r) => r.tag));
+    },
+
+    /** Replace the event's quick tags with `tagIds`, preserving their order. */
+    async setQuickTags(eventId: string, tagIds: string[]): Promise<void> {
+      await db
+        .delete(eventQuickTags)
+        .where(eq(eventQuickTags.eventId, eventId));
+      if (tagIds.length > 0) {
+        await db.insert(eventQuickTags).values(
+          tagIds.map((tagId, position) => ({ eventId, tagId, position })),
+        );
+      }
+    },
+
+    /** Remove a tag from every event's quick tags (called on tag delete). */
+    async removeTagFromQuickTags(tagId: string): Promise<void> {
+      await db.delete(eventQuickTags).where(eq(eventQuickTags.tagId, tagId));
     },
   };
 }

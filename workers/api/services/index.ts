@@ -35,8 +35,8 @@ export function createServices(env: Env) {
     organizations: createOrganizationsService({ orgsRepo }),
     users: createUsersService({ usersRepo }),
     members: createMembersService({ membershipsRepo, usersRepo }),
-    events: createEventsService({ eventsRepo, usageRepo }),
-    tags: createTagsService({ tagsRepo, contactsRepo }),
+    events: createEventsService({ eventsRepo, tagsRepo, usageRepo }),
+    tags: createTagsService({ tagsRepo, contactsRepo, eventsRepo }),
     contacts: createContactsService({
       contactsRepo,
       eventsRepo,

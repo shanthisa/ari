@@ -4,7 +4,12 @@ import {
   NotFoundError,
 } from "../../workers/api/services/errors";
 import { createTagsService } from "../../workers/api/services/tags-service";
-import { fakeTag, mockContactsRepo, mockTagsRepo } from "../helpers/mocks";
+import {
+  fakeTag,
+  mockContactsRepo,
+  mockEventsRepo,
+  mockTagsRepo,
+} from "../helpers/mocks";
 
 const ORG = "org_test_1";
 const USER = "user_test_1";
@@ -12,8 +17,9 @@ const USER = "user_test_1";
 function makeService() {
   const tagsRepo = mockTagsRepo();
   const contactsRepo = mockContactsRepo();
-  const service = createTagsService({ tagsRepo, contactsRepo });
-  return { service, tagsRepo, contactsRepo };
+  const eventsRepo = mockEventsRepo();
+  const service = createTagsService({ tagsRepo, contactsRepo, eventsRepo });
+  return { service, tagsRepo, contactsRepo, eventsRepo };
 }
 
 describe("tags service", () => {
@@ -99,7 +105,7 @@ describe("tags service", () => {
     });
 
     it("detaches from contacts and reports the affected count", async () => {
-      const { service, tagsRepo, contactsRepo } = makeService();
+      const { service, tagsRepo, contactsRepo, eventsRepo } = makeService();
       tagsRepo.getById.mockResolvedValue(fakeTag({ id: "tag_1" }));
       contactsRepo.countByTag.mockResolvedValue(3);
       tagsRepo.delete.mockResolvedValue(true);
@@ -108,6 +114,7 @@ describe("tags service", () => {
 
       expect(result).toEqual({ affectedContacts: 3 });
       expect(contactsRepo.detachTag).toHaveBeenCalledWith("tag_1");
+      expect(eventsRepo.removeTagFromQuickTags).toHaveBeenCalledWith("tag_1");
       expect(tagsRepo.delete).toHaveBeenCalledWith(ORG, USER, "tag_1");
     });
   });

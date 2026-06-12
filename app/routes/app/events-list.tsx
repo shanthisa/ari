@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useFetcher } from "react-router";
+import { Link, useFetcher, useNavigate } from "react-router";
 import { toast } from "sonner";
+import { EXIT_FLAG, NO_AUTO_CAPTURE } from "~/lib/event-mode";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -245,6 +246,42 @@ function NewEventDialog() {
   );
 }
 
+/** Surfaces the active event and, on mobile, auto-opens event mode — unless the
+ * user just exited it or opted out (so detection is never trapping). */
+function ActiveEventBanner({ events }: { events: Event[] }) {
+  const navigate = useNavigate();
+  const active = events.find((e) => e.status === "active");
+
+  useEffect(() => {
+    if (!active) return;
+    if (sessionStorage.getItem(EXIT_FLAG) === "1") {
+      sessionStorage.removeItem(EXIT_FLAG);
+      return;
+    }
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    const optedOut = localStorage.getItem(NO_AUTO_CAPTURE) === "1";
+    if (isMobile && !optedOut) navigate("/app/capture");
+  }, [active?.id, navigate]);
+
+  if (!active) return null;
+  return (
+    <div className="bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+      <div>
+        <p className="form-label-mono text-muted-foreground text-[10px]">
+          Active event
+        </p>
+        <p className="mt-0.5 text-sm">
+          <span className="font-medium">{active.name}</span> is live — open event
+          mode to start capturing.
+        </p>
+      </div>
+      <Link to="/app/capture">
+        <Button size="sm">Open capture →</Button>
+      </Link>
+    </div>
+  );
+}
+
 export default function EventsList({ loaderData }: Route.ComponentProps) {
   const { org, user, orgRole, events } = loaderData;
   const role = (orgRole ?? "org:member").replace(/^org:/, "");
@@ -266,6 +303,8 @@ export default function EventsList({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="rule-perforated mt-6" />
+
+      <ActiveEventBanner events={events} />
 
       {events.length === 0 ? (
         <div className="mt-16 flex flex-col items-center gap-4 text-center">

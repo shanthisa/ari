@@ -1,7 +1,11 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { ApiEnv } from "../types";
-import { eventCreateSchema, eventUpdateSchema } from "../validation";
+import {
+  eventCreateSchema,
+  eventUpdateSchema,
+  quickTagsSchema,
+} from "../validation";
 
 /** /api/events — CRUD plus activate/archive lifecycle. Mounted inside the
  * authed group, so c.var.{orgId,userId,org,services} are always present.
@@ -25,6 +29,15 @@ export function createEventsController() {
     return c.json({ event }, 201);
   });
 
+  // Static route registered before /:id so "active" isn't read as an id.
+  app.get("/active", async (c) => {
+    const event = await c.var.services.events.getActive(
+      c.var.orgId,
+      c.var.userId,
+    );
+    return c.json({ event: event ?? null });
+  });
+
   app.get("/:id", async (c) => {
     const event = await c.var.services.events.get(
       c.var.orgId,
@@ -32,6 +45,25 @@ export function createEventsController() {
       c.req.param("id"),
     );
     return c.json({ event });
+  });
+
+  app.get("/:id/quick-tags", async (c) => {
+    const quickTags = await c.var.services.events.getQuickTags(
+      c.var.orgId,
+      c.var.userId,
+      c.req.param("id"),
+    );
+    return c.json({ quickTags });
+  });
+
+  app.put("/:id/quick-tags", zValidator("json", quickTagsSchema), async (c) => {
+    const quickTags = await c.var.services.events.setQuickTags(
+      c.var.orgId,
+      c.var.userId,
+      c.req.param("id"),
+      c.req.valid("json").tagIds,
+    );
+    return c.json({ quickTags });
   });
 
   app.patch("/:id", zValidator("json", eventUpdateSchema), async (c) => {

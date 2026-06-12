@@ -16,6 +16,7 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 import { apiFetch } from "~/lib/api-client.server";
+import { downscaleImage, photoUrl } from "~/lib/photos";
 import type {
   ContactPhoto,
   ContactWithDetails,
@@ -30,18 +31,23 @@ export function meta() {
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { eventId } = params;
-  const [eventRes, contactsRes, tagsRes] = await Promise.all([
+  const [eventRes, contactsRes, tagsRes, quickRes] = await Promise.all([
     apiFetch<{ event: Event }>(request, `/api/events/${eventId}`),
     apiFetch<{ contacts: ContactWithDetails[] }>(
       request,
       `/api/events/${eventId}/contacts`,
     ),
     apiFetch<{ tags: Tag[] }>(request, "/api/tags"),
+    apiFetch<{ quickTags: Tag[] }>(
+      request,
+      `/api/events/${eventId}/quick-tags`,
+    ),
   ]);
   return {
     event: eventRes.event,
     contacts: contactsRes.contacts,
     tags: tagsRes.tags,
+    quickTags: quickRes.quickTags,
   };
 }
 
@@ -51,6 +57,15 @@ export async function action({ request, params }: Route.ActionArgs) {
   const intent = String(form.get("intent") ?? "");
   const contactId = String(form.get("contactId") ?? "");
   const tagIds = form.getAll("tagIds").map(String);
+
+  if (intent === "quickTags") {
+    await apiFetch(request, `/api/events/${eventId}/quick-tags`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tagIds }),
+    });
+    return { ok: true, quickTagsSaved: true };
+  }
 
   if (intent === "delete") {
     await apiFetch(request, `/api/contacts/${contactId}`, { method: "DELETE" });
@@ -241,36 +256,6 @@ function CaptureForm({ tags }: { tags: Tag[] }) {
       </div>
     </fetcher.Form>
   );
-}
-
-/** Authenticated, private URL for a contact photo (served by the worker). */
-function photoUrl(contactId: string, photoId: string): string {
-  return `/api/contacts/${contactId}/photos/${photoId}`;
-}
-
-/** Downscale + re-encode an image client-side before upload — kind to
- * conference Wi-Fi, and keeps objects small (PRD F2.3, ~500 KB target). */
-async function downscaleImage(
-  file: File,
-  max = 1600,
-  quality = 0.8,
-): Promise<{ blob: Blob; width: number; height: number }> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, width, height);
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("encode failed"))),
-      "image/jpeg",
-      quality,
-    ),
-  );
-  return { blob, width, height };
 }
 
 /** Photo thumbnails + add/delete. Uploads go straight to the authed API (not
@@ -506,8 +491,63 @@ function ContactCard({
   );
 }
 
+function QuickTagsPanel({
+  tags,
+  quickTags,
+}: {
+  tags: Tag[];
+  quickTags: Tag[];
+}) {
+  const fetcher = useFetcher<typeof action>();
+  const current = new Set(quickTags.map((t) => t.id));
+  const busy = fetcher.state !== "idle";
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.quickTagsSaved) {
+      toast.success("Quick tags updated");
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  if (tags.length === 0) return null;
+
+  return (
+    <fetcher.Form
+      method="post"
+      className="bg-card mt-6 rounded-lg border p-4"
+    >
+      <input type="hidden" name="intent" value="quickTags" />
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">Quick tags</h2>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            One-tap chips on the event-mode capture screen (first 8).
+          </p>
+        </div>
+        <Button type="submit" size="sm" variant="outline" disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <label
+            key={tag.id}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm"
+          >
+            <Checkbox
+              name="tagIds"
+              value={tag.id}
+              defaultChecked={current.has(tag.id)}
+            />
+            {tag.name}
+          </label>
+        ))}
+      </div>
+    </fetcher.Form>
+  );
+}
+
 export default function EventContacts({ loaderData }: Route.ComponentProps) {
-  const { event, contacts, tags } = loaderData;
+  const { event, contacts, tags, quickTags } = loaderData;
   return (
     <div>
       <Link
@@ -534,6 +574,8 @@ export default function EventContacts({ loaderData }: Route.ComponentProps) {
       </div>
 
       <div className="rule-perforated mt-6" />
+
+      <QuickTagsPanel tags={tags} quickTags={quickTags} />
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,24rem)_1fr]">
         <div>

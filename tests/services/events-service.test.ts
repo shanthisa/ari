@@ -4,16 +4,23 @@ import {
   NotFoundError,
   PlanLimitError,
 } from "../../workers/api/services/errors";
-import { fakeEvent, mockEventsRepo, mockUsageRepo } from "../helpers/mocks";
+import {
+  fakeEvent,
+  fakeTag,
+  mockEventsRepo,
+  mockTagsRepo,
+  mockUsageRepo,
+} from "../helpers/mocks";
 
 const ORG = "org_test_1";
 const USER = "user_test_1";
 
 function makeService() {
   const eventsRepo = mockEventsRepo();
+  const tagsRepo = mockTagsRepo();
   const usageRepo = mockUsageRepo();
-  const service = createEventsService({ eventsRepo, usageRepo });
-  return { service, eventsRepo, usageRepo };
+  const service = createEventsService({ eventsRepo, tagsRepo, usageRepo });
+  return { service, eventsRepo, tagsRepo, usageRepo };
 }
 
 describe("events service", () => {
@@ -114,5 +121,43 @@ describe("events service", () => {
     await expect(service.delete(ORG, USER, "nope")).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+
+  describe("quick tags", () => {
+    it("getQuickTags 404s when the event isn't theirs", async () => {
+      const { service, eventsRepo } = makeService();
+      eventsRepo.getById.mockResolvedValue(null);
+      await expect(
+        service.getQuickTags(ORG, USER, "nope"),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("setQuickTags keeps only owned tags, preserves order, caps at 8", async () => {
+      const { service, eventsRepo, tagsRepo } = makeService();
+      eventsRepo.getById.mockResolvedValue(fakeEvent());
+      tagsRepo.listByOwner.mockResolvedValue(
+        Array.from({ length: 10 }, (_, i) => fakeTag({ id: `t${i}` })),
+      );
+      eventsRepo.getQuickTags.mockResolvedValue([]);
+
+      // includes a foreign id and 9 owned ids in a specific order
+      await service.setQuickTags(ORG, USER, "event_1", [
+        "t9",
+        "foreign",
+        "t8",
+        "t7",
+        "t6",
+        "t5",
+        "t4",
+        "t3",
+        "t2",
+        "t1",
+      ]);
+
+      const saved = eventsRepo.setQuickTags.mock.calls[0][1];
+      expect(saved).toHaveLength(8); // capped
+      expect(saved).not.toContain("foreign"); // foreign dropped
+      expect(saved[0]).toBe("t9"); // order preserved
+    });
   });
 });

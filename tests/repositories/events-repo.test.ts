@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEventsRepo } from "../../workers/api/repositories/events-repo";
-import { makeEvent, makeOrg, testDb } from "../helpers/fixtures";
+import { makeEvent, makeOrg, makeTag, testDb } from "../helpers/fixtures";
 
 const USER = "user_test_1";
 
@@ -99,6 +99,32 @@ describe("events repo", () => {
     });
     expect(updated?.name).toBe("Renamed");
     expect(updated?.venue).toBe("Moscone West");
+  });
+
+  it("sets quick tags in order, replaces them, and detaches on tag delete", async () => {
+    const db = testDb();
+    const repo = createEventsRepo(db);
+    await makeOrg(db, "org_qt");
+    const event = await makeEvent(db, "org_qt", USER);
+    const a = await makeTag(db, "org_qt", USER, "a");
+    const b = await makeTag(db, "org_qt", USER, "b");
+    const c = await makeTag(db, "org_qt", USER, "c");
+
+    await repo.setQuickTags(event.id, [c.id, a.id]);
+    expect((await repo.getQuickTags(event.id)).map((t) => t.name)).toEqual([
+      "c",
+      "a",
+    ]);
+
+    // setQuickTags replaces (not appends)
+    await repo.setQuickTags(event.id, [b.id]);
+    expect((await repo.getQuickTags(event.id)).map((t) => t.name)).toEqual([
+      "b",
+    ]);
+
+    // removing a tag detaches it from quick tags
+    await repo.removeTagFromQuickTags(b.id);
+    expect(await repo.getQuickTags(event.id)).toHaveLength(0);
   });
 
   it("deletes scoped by owner", async () => {

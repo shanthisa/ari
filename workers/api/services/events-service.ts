@@ -1,19 +1,26 @@
 import { currentPeriod, getPlan } from "~/lib/plans";
 import type { Event, EventsRepo } from "../repositories/events-repo";
+import type { Tag, TagsRepo } from "../repositories/tags-repo";
 import type { UsageRepo } from "../repositories/usage-repo";
 import { NotFoundError, PlanLimitError } from "./errors";
 
 // Services hold the business rules: plan gating, usage metering, "not found"
-// semantics, and the one-active-event-per-user invariant. They depend on
-// repositories (never on Drizzle directly) and are unit-tested with mocked repos.
+// semantics, the one-active-event-per-user invariant, and quick-tag curation.
+// They depend on repositories (never on Drizzle directly) and are unit-tested
+// with mocked repos.
+
+/** Suggested cap on an event's one-tap quick tags (PRD open question #2). */
+export const QUICK_TAG_CAP = 8;
 
 export interface EventsServiceDeps {
   eventsRepo: EventsRepo;
+  tagsRepo: TagsRepo;
   usageRepo: UsageRepo;
 }
 
 export function createEventsService({
   eventsRepo,
+  tagsRepo,
   usageRepo,
 }: EventsServiceDeps) {
   async function get(
@@ -112,6 +119,34 @@ export function createEventsService({
     async delete(orgId: string, userId: string, id: string): Promise<void> {
       const deleted = await eventsRepo.delete(orgId, userId, id);
       if (!deleted) throw new NotFoundError(`event ${id} not found`);
+    },
+
+    async getQuickTags(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<Tag[]> {
+      await get(orgId, userId, id); // 404 if it isn't theirs
+      return eventsRepo.getQuickTags(id);
+    },
+
+    /** Curate the event's quick tags: keep only the user's own tags, preserve
+     * the given order, and cap the count. Returns the resulting tags. */
+    async setQuickTags(
+      orgId: string,
+      userId: string,
+      id: string,
+      tagIds: string[],
+    ): Promise<Tag[]> {
+      await get(orgId, userId, id); // 404 if it isn't theirs
+      const owned = new Set(
+        (await tagsRepo.listByOwner(orgId, userId)).map((t) => t.id),
+      );
+      const curated = tagIds
+        .filter((tagId) => owned.has(tagId))
+        .slice(0, QUICK_TAG_CAP);
+      await eventsRepo.setQuickTags(id, curated);
+      return eventsRepo.getQuickTags(id);
     },
   };
 }

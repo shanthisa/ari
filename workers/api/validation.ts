@@ -26,6 +26,11 @@ export const eventUpdateSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, "no fields to update");
 
+/** Ordered set of tag ids to use as an event's quick tags. */
+export const quickTagsSchema = z.object({
+  tagIds: z.array(z.string()).max(50),
+});
+
 export type EventCreateInput = z.infer<typeof eventCreateSchema>;
 export type EventUpdateInput = z.infer<typeof eventUpdateSchema>;
 

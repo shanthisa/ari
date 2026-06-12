@@ -7,7 +7,12 @@ import {
   PlanLimitError,
 } from "../../workers/api/services/errors";
 import type { ApiEnv } from "../../workers/api/types";
-import { fakeEvent, fakeOrg, mockEventsService } from "../helpers/mocks";
+import {
+  fakeEvent,
+  fakeOrg,
+  fakeTag,
+  mockEventsService,
+} from "../helpers/mocks";
 
 /** Mount the controller the way createApi does, with stubbed auth/services. */
 function makeApp(events = mockEventsService()) {
@@ -112,6 +117,47 @@ describe("events controller", () => {
       "org_test_1",
       "user_test_1",
       "event_1",
+    );
+  });
+
+  it("GET /events/active returns the active event (or null)", async () => {
+    const { app, events } = makeApp();
+    events.getActive.mockResolvedValue(fakeEvent({ status: "active" }));
+
+    const res = await app.request("/events/active");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { event: { status: string } | null };
+    expect(body.event?.status).toBe("active");
+    expect(events.getActive).toHaveBeenCalledWith("org_test_1", "user_test_1");
+  });
+
+  it("GET /events/:id/quick-tags lists quick tags", async () => {
+    const { app, events } = makeApp();
+    events.getQuickTags.mockResolvedValue([fakeTag()]);
+
+    const res = await app.request("/events/event_1/quick-tags");
+    expect(res.status).toBe(200);
+    expect(events.getQuickTags).toHaveBeenCalledWith(
+      "org_test_1",
+      "user_test_1",
+      "event_1",
+    );
+  });
+
+  it("PUT /events/:id/quick-tags sets quick tags", async () => {
+    const { app, events } = makeApp();
+    events.setQuickTags.mockResolvedValue([fakeTag()]);
+
+    const res = await app.request(
+      "/events/event_1/quick-tags",
+      json({ tagIds: ["t1", "t2"] }, "PUT"),
+    );
+    expect(res.status).toBe(200);
+    expect(events.setQuickTags).toHaveBeenCalledWith(
+      "org_test_1",
+      "user_test_1",
+      "event_1",
+      ["t1", "t2"],
     );
   });
 

@@ -1,18 +1,24 @@
 import type { ContactsRepo } from "../repositories/contacts-repo";
+import type { EventsRepo } from "../repositories/events-repo";
 import type { Tag, TagsRepo } from "../repositories/tags-repo";
 import { ConflictError, NotFoundError } from "./errors";
 
 // Services hold the business rules. For tags that's name uniqueness per user
 // (a friendly ConflictError, with the DB unique index as the backstop), "not
-// found" semantics, and detaching from contacts on delete. Unit-tested with
-// mocked repos.
+// found" semantics, and detaching from contacts and event quick-tags on delete.
+// Unit-tested with mocked repos.
 
 export interface TagsServiceDeps {
   tagsRepo: TagsRepo;
   contactsRepo: ContactsRepo;
+  eventsRepo: EventsRepo;
 }
 
-export function createTagsService({ tagsRepo, contactsRepo }: TagsServiceDeps) {
+export function createTagsService({
+  tagsRepo,
+  contactsRepo,
+  eventsRepo,
+}: TagsServiceDeps) {
   async function get(
     orgId: string,
     userId: string,
@@ -68,6 +74,7 @@ export function createTagsService({ tagsRepo, contactsRepo }: TagsServiceDeps) {
       await get(orgId, userId, id); // 404 if it isn't theirs
       const affectedContacts = await contactsRepo.countByTag(id);
       await contactsRepo.detachTag(id);
+      await eventsRepo.removeTagFromQuickTags(id);
       const deleted = await tagsRepo.delete(orgId, userId, id);
       if (!deleted) throw new NotFoundError(`tag ${id} not found`);
       return { affectedContacts };

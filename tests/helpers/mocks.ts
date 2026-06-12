@@ -57,6 +57,9 @@ export function mockEventsRepo() {
     setActive: vi.fn(),
     setStatus: vi.fn(),
     delete: vi.fn(),
+    getQuickTags: vi.fn(),
+    setQuickTags: vi.fn(),
+    removeTagFromQuickTags: vi.fn(),
   };
 }
 
@@ -70,6 +73,8 @@ export function mockEventsService() {
     activate: vi.fn(),
     archive: vi.fn(),
     delete: vi.fn(),
+    getQuickTags: vi.fn(),
+    setQuickTags: vi.fn(),
   };
 }
 

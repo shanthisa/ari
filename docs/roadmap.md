@@ -143,27 +143,35 @@ access-controlled (PRD F2.3, §7).
 **Done:** add photos, reload, they render via authed URLs; deleting the contact
 removes the objects; `pnpm test` green; deployed.
 
-### [ ] Phase 5 — Event mode + PWA
+### [x] Phase 5 — Event mode + PWA  *(done 2026-06-12)*
 **Goal:** the 10-second, one-handed mobile capture experience, plus installability
 (PRD §5.2, §5.4) — the product's reason to exist.
-**Slice:** event quick-tags curation (`event_quick_tags`) → mobile capture route +
-auto-detection → PWA manifest + service worker.
-**Build:**
-- `event_quick_tags`: `(eventId, tagId, position)` — an ordered subset (cap ~8) shown
-  as one-tap chips. Add curation UI to the event page (F1.3) and an "add tag on the
-  fly" affordance that creates a tag (Phase 2) **and** appends it here (F2.5).
-- Capture route: on a mobile viewport with an active event, land directly on the
-  capture screen — camera/photo button, name, quick-tag chips, note, save, top-to-
-  bottom, save reachable one-handed (F2.2). Desktop → dashboard with an active-event
-  banner. Provide "Exit event mode" + a user-overridable "don't auto-enter"
-  preference so detection failures aren't trapping (PRD §6).
-- After save: toast + new contact at top of a recent-captures strip; form resets;
-  budget < 15 s (F2.8–2.9). "Start an event" one-step shortcut when none active (F2.10).
-- PWA: `public/manifest.webmanifest` (name, icons, standalone, theme color) + a
-  service worker precaching the app shell; offline indicator + save-failure keeps
-  form state (F4.1–4.3). *(True offline capture stays a stretch — PRD §8.)*
-**Done when:** install the PWA on a phone, open it with an active event, capture a
-contact in well under 15 s with a photo + a quick tag; `pnpm test` green; deploys.
+**Slice:** `event_quick_tags` curation → mobile capture route (`/app/capture`) +
+auto-detection → PWA (manifest + service worker, served from the Worker).
+**Shipped:**
+- `event_quick_tags` (`eventId, tagId, position`): repo set/get/remove; service
+  curation keeps only owned tags, preserves order, caps at 8; `GET/PUT
+  /api/events/:id/quick-tags`. Curation UI on the event page. Deleting a tag now
+  also detaches it from quick tags (extended the Phase 2 cleanup).
+- `GET /api/events/active` → the user's active event.
+- **Event mode** (`/app/capture`): capture-first screen — photo button, name,
+  one-tap quick-tag chips, note, big Save; live geo indicator. Client-driven for
+  speed (create + photo upload + revalidate); a failed save keeps the form so
+  nothing is lost (F4.3). "Start an event" one-step when none active (F2.10);
+  recent-captures strip with thumbnails (F2.8–2.9).
+- **Auto-detection:** on `/app`, a mobile viewport + active event opens capture
+  automatically — unless the user just hit **Exit** (sessionStorage) or set the
+  "don't auto-open on this device" preference (localStorage). Desktop shows an
+  active-event banner instead. Never trapping.
+- **PWA:** manifest, SVG icon, and a defensive service worker (API never cached,
+  immutable assets cache-first, navigations network-first with offline fallback)
+  served straight from the Worker at root scope; theme-color + apple-touch tags;
+  SW registered from the document. Offline indicator bar in the app layout.
+- Tests: backend quick-tags (repo order/replace/detach, service cap+ownership,
+  controller active + get/put) — **135/135 green**; typecheck + build pass.
+  Migration `0004_black_sasquatch` (additive). PWA endpoints verified on prod.
+**Done:** installable PWA that opens into event mode; capture a contact in well
+under 15 s with a photo + a quick tag; `pnpm test` green; deployed.
 
 ### [ ] Phase 6 — Global search & filters
 **Goal:** find any contact ever captured (PRD F3.3, F3.1 filters).

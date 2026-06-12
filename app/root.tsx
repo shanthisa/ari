@@ -24,6 +24,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#1a1a1a" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="icon" href="https://fav.farm/%E2%AD%90" />
+        <link rel="apple-touch-icon" href="https://fav.farm/%E2%AD%90" />
         <Meta />
         <Links />
       </head>
@@ -31,6 +36,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {children}
         <ScrollRestoration />
         <Scripts />
+        {/* Register the service worker for installability + offline shell. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if('serviceWorker' in navigator){addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})}",
+          }}
+        />
       </body>
     </html>
   );

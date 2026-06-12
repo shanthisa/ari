@@ -12,6 +12,7 @@ export default [
   // Org-scoped dashboard. Add your own resource routes alongside `events`.
   route("app", "routes/app/layout.tsx", [
     index("routes/app/events-list.tsx"),
+    route("capture", "routes/app/capture.tsx"),
     route("events/:eventId", "routes/app/event-contacts.tsx"),
     route("tags", "routes/app/tags.tsx"),
     route("members", "routes/app/members.tsx"),
