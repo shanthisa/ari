@@ -4,6 +4,7 @@ import { domainErrorHandler } from "./controllers/error-handler";
 import { createEventsController } from "./controllers/events-controller";
 import { createIntegrationsController } from "./controllers/integrations-controller";
 import { createMembersController } from "./controllers/members-controller";
+import { createTagsController } from "./controllers/tags-controller";
 import { requireOrg } from "./middleware/auth";
 import { injectServices } from "./middleware/services";
 import type { ApiEnv } from "./types";
@@ -47,6 +48,7 @@ export function createApi() {
     }),
   );
   authed.route("/events", createEventsController());
+  authed.route("/tags", createTagsController());
   authed.route("/members", createMembersController());
 
   app.route("/", authed);

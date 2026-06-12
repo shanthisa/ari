@@ -5,6 +5,10 @@ import {
   type Event,
 } from "../../workers/api/repositories/events-repo";
 import { createMembershipsRepo } from "../../workers/api/repositories/memberships-repo";
+import {
+  createTagsRepo,
+  type Tag,
+} from "../../workers/api/repositories/tags-repo";
 import { createOrganizationsRepo } from "../../workers/api/repositories/organizations-repo";
 import { createUsersRepo } from "../../workers/api/repositories/users-repo";
 
@@ -52,4 +56,13 @@ export async function makeEvent(
     venue: overrides.venue ?? "Moscone West",
     notes: overrides.notes ?? "A sample event",
   });
+}
+
+export async function makeTag(
+  db: Db,
+  orgId: string,
+  userId = "user_test_1",
+  name = "investor",
+): Promise<Tag> {
+  return createTagsRepo(db).create({ orgId, userId, name });
 }

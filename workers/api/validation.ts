@@ -28,3 +28,12 @@ export const eventUpdateSchema = z
 
 export type EventCreateInput = z.infer<typeof eventCreateSchema>;
 export type EventUpdateInput = z.infer<typeof eventUpdateSchema>;
+
+// Tag names are short and trimmed; uniqueness per user is enforced in the service.
+const tagName = z.string().trim().min(1, "name is required").max(30);
+
+export const tagCreateSchema = z.object({ name: tagName });
+export const tagUpdateSchema = z.object({ name: tagName });
+
+export type TagCreateInput = z.infer<typeof tagCreateSchema>;
+export type TagUpdateInput = z.infer<typeof tagUpdateSchema>;

@@ -8,6 +8,13 @@
       "when": 1781292537183,
       "tag": "0000_funny_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781298716351,
+      "tag": "0001_happy_beast",
+      "breakpoints": true
     }
   ]
 }

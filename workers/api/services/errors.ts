@@ -4,6 +4,11 @@ export class NotFoundError extends Error {
   readonly kind = "not_found";
 }
 
+/** A uniqueness/state conflict (e.g. a duplicate tag name) — maps to 409. */
+export class ConflictError extends Error {
+  readonly kind = "conflict";
+}
+
 /** Plan ceiling reached (e.g. too many items) — maps to 402. */
 export class PlanLimitError extends Error {
   readonly kind = "plan_limit";

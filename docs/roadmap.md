@@ -67,19 +67,25 @@ a list → activate it; exactly **one active event per user** at a time.
 **Done:** create → activate → active event badged; activating another archives the
 previous; archived events still listed; `pnpm test` green; builds & deploys.
 
-### [ ] Phase 2 — Tags
+### [x] Phase 2 — Tags  *(done 2026-06-12)*
 **Goal:** create, rename, and delete tags that are **global to the user** and
 reusable across events (PRD F1.2).
-**Slice:** schema `tags` → repo → service → controller → `app/routes/app/tags.tsx`.
-**Build:**
-- Schema: `id, orgId, userId, name, createdAt`; **unique per user** (`(userId, name)`),
-  name ≤ 30 chars (zod at the controller edge).
-- Service: enforce uniqueness with a typed `ConflictError`; delete cascades the
-  tag off contacts in Phase 3's join table (until then, plain delete) and reports
-  the affected count for the confirmation dialog.
-- Tests: uniqueness, rename collision, delete.
-**Done when:** a user can build a reusable tag library; duplicate names are
-rejected with a clear message; `pnpm test` green; deploys.
+**Slice:** schema `tags` → `tags-repo` → `tags-service` → `tags-controller` →
+`app/routes/app/tags.tsx`.
+**Shipped:**
+- Schema `tags`: `id, orgId, userId, name, createdAt`, **unique per user**
+  (`uniqueIndex(orgId, userId, name)`); names trimmed, ≤ 30 chars (zod at the edge).
+- Uniqueness enforced in the **service** with a new typed `ConflictError`
+  (→ HTTP 409, `code: "conflict"`), the DB unique index as the backstop; rename
+  allows keeping the same name and rejects clashes with other tags.
+- `/api/tags` CRUD (create/list/rename/delete); delete is a plain delete for now
+  (Phase 3 will detach from contacts and report the affected count).
+- UI: add-tag form, inline per-row rename + delete, duplicate-name toast.
+- Tests: 19 added (repo DB-level uniqueness + cross-user isolation, service
+  conflict/not-found, controller 409 + validation) — **88/88 green**; typecheck +
+  build pass. Migration `0001_happy_beast` (additive).
+**Done:** build a reusable tag library; duplicates rejected with a clear message;
+`pnpm test` green; builds & deploys.
 
 ### [ ] Phase 3 — Contacts (capture + review CRUD)
 **Goal:** the core journey — under an active event, capture a contact (name, note,

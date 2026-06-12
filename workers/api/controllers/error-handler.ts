@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import {
+  ConflictError,
   NotFoundError,
   PlanLimitError,
   UsageLimitError,
@@ -16,6 +17,9 @@ export function domainErrorHandler(err: Error, c: Context<ApiEnv>) {
   }
   if (err instanceof NotFoundError) {
     return c.json({ error: err.message }, 404);
+  }
+  if (err instanceof ConflictError) {
+    return c.json({ error: err.message, code: "conflict" }, 409);
   }
   if (err instanceof PlanLimitError) {
     return c.json({ error: err.message, code: "plan_limit" }, 402);

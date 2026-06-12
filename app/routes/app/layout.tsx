@@ -29,6 +29,7 @@ function Wordmark() {
 
 const NAV = [
   { to: "/app", label: "Events", end: true },
+  { to: "/app/tags", label: "Tags", end: false },
   { to: "/app/members", label: "Members", end: false },
 ] as const;
 

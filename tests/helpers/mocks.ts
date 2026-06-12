@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type { Event } from "../../workers/api/repositories/events-repo";
 import type { Membership } from "../../workers/api/repositories/memberships-repo";
+import type { Tag } from "../../workers/api/repositories/tags-repo";
 import type { Organization } from "../../workers/api/repositories/organizations-repo";
 import type { User } from "../../workers/api/repositories/users-repo";
 
@@ -64,6 +65,38 @@ export function mockEventsService() {
     update: vi.fn(),
     activate: vi.fn(),
     archive: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
+export function fakeTag(overrides: Partial<Tag> = {}): Tag {
+  return {
+    id: "tag_1",
+    orgId: "org_test_1",
+    userId: "user_test_1",
+    name: "investor",
+    createdAt: 1_700_000_000,
+    ...overrides,
+  };
+}
+
+export function mockTagsRepo() {
+  return {
+    create: vi.fn(),
+    getById: vi.fn(),
+    findByName: vi.fn(),
+    listByOwner: vi.fn(),
+    rename: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
+export function mockTagsService() {
+  return {
+    list: vi.fn(),
+    get: vi.fn(),
+    create: vi.fn(),
+    rename: vi.fn(),
     delete: vi.fn(),
   };
 }
