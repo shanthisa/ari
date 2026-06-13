@@ -376,7 +376,7 @@ function EditContactDialog({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="form-label-mono text-muted-foreground/70 hover:text-foreground text-[10px] transition-colors"
+        className="form-label-mono text-muted-foreground/70 hover:text-foreground text-[10px] leading-none transition-colors"
       >
         Edit
       </button>
@@ -444,13 +444,13 @@ function ContactCard({
         <h3 className="truncate text-lg">{contact.name}</h3>
         <div className="flex shrink-0 items-center gap-3">
           <EditContactDialog contact={contact} tags={tags} />
-          <fetcher.Form method="post">
+          <fetcher.Form method="post" className="flex">
             <input type="hidden" name="intent" value="delete" />
             <input type="hidden" name="contactId" value={contact.id} />
             <button
               type="submit"
               disabled={busy}
-              className="form-label-mono text-muted-foreground/60 hover:text-destructive text-[10px] transition-colors"
+              className="form-label-mono text-muted-foreground/60 hover:text-destructive text-[10px] leading-none transition-colors"
             >
               Delete
             </button>
